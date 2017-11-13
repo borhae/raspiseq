@@ -11,7 +11,6 @@ import processing.core.PApplet;
 import processing.core.PFont;
 import processing.core.PVector;
 import processing.event.MouseEvent;
-import sequencer.SequencerMain.InputState;
 
 public class SequencerMain extends PApplet
 {
@@ -106,7 +105,7 @@ public class SequencerMain extends PApplet
                 {
                     _midiOut2 = MidiSystem.getMidiDevice(curDevice);
                     _midiOut2.open();
-                    sequencerBarsArea.setMidiDeviceBar(_midiOut2, 7);
+                    sequencerBarsArea.setMidiDeviceBar(_midiOut1, 7);
                 }
                 catch (MidiUnavailableException exc)
                 {
@@ -430,7 +429,7 @@ public class SequencerMain extends PApplet
             _sequencerBars[6].setActiveNote(39);
             _sequencerBars[7] = new SequencerBar(new PVector(area.x, _sequencerBars[6].getDimensions().y + _sequencerBars[6].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
             _sequencerBars[7].draw(0);
-            _sequencerBars[7].setActiveChannel(0);
+            _sequencerBars[7].setActiveNote(75);
         }
 
         public void setMidiDeviceBar(MidiDevice midiDevice, int barIdx)
