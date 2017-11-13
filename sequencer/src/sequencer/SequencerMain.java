@@ -79,42 +79,91 @@ public class SequencerMain extends PApplet
         {
             System.out.print("Name: " + curDevice.getName());
             System.out.print("  Description: " + curDevice.getDescription());
-            if(curDevice.getName().equals("USB Midi 4i4o") && curDevice.getDescription().equals("External MIDI Port"))
-            {
-                try
-                {
-                    _midiOut1 = MidiSystem.getMidiDevice(curDevice);
-                    _midiOut1.open();
-                    sequencerBarsArea.setMidiDeviceBar(_midiOut1, 0);
-                    sequencerBarsArea.setMidiDeviceBar(_midiOut1, 1);
-                    sequencerBarsArea.setMidiDeviceBar(_midiOut1, 2);
-                    sequencerBarsArea.setMidiDeviceBar(_midiOut1, 3);
-                    sequencerBarsArea.setMidiDeviceBar(_midiOut1, 4);
-                    sequencerBarsArea.setMidiDeviceBar(_midiOut1, 5);
-                    sequencerBarsArea.setMidiDeviceBar(_midiOut1, 6);
-                }
-                catch (MidiUnavailableException exc)
-                {
-                    exc.printStackTrace();
-                }
-                System.out.print(" <---- SELECTED");
-            }
-            if(curDevice.getName().equals("MIDIOUT2 (USB Midi 4i4o)") && curDevice.getDescription().equals("External MIDI Port"))
-            {
-                try
-                {
-                    _midiOut2 = MidiSystem.getMidiDevice(curDevice);
-                    _midiOut2.open();
-                    sequencerBarsArea.setMidiDeviceBar(_midiOut1, 7);
-                }
-                catch (MidiUnavailableException exc)
-                {
-                    exc.printStackTrace();
-                }
-                System.out.print(" <---- SELECTED");
-            }
+//            homeMapping(sequencerBarsArea, curDevice);
+            windowsMapping(sequencerBarsArea, curDevice);
             System.out.println();
         }
+    }
+ 
+    private void windowsMapping(SequencerBarArea sequencerBarsArea, Info curDevice)
+    {
+        if(curDevice.getName().equals("Gervill") && curDevice.getDescription().equals("Software MIDI Synthesizer"))
+        {
+            try
+            {
+                _midiOut1 = MidiSystem.getMidiDevice(curDevice);
+                _midiOut1.open();
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 0);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 1);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 2);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 3);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 4);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 5);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 6);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 7);
+            }
+            catch (MidiUnavailableException exc)
+            {
+                exc.printStackTrace();
+            }
+            System.out.print(" <---- SELECTED");
+        }
+        sequencerBarsArea.setBarsChannelAndNote(0, 10, 36);
+        sequencerBarsArea.setBarsChannelAndNote(1, 10, 38);
+        sequencerBarsArea.setBarsChannelAndNote(2, 10, 39);
+        sequencerBarsArea.setBarsChannelAndNote(3, 10, 42);
+        sequencerBarsArea.setBarsChannelAndNote(4, 10, 43);
+        sequencerBarsArea.setBarsChannelAndNote(5, 10, 46);
+        sequencerBarsArea.setBarsChannelAndNote(6, 10, 50);
+        sequencerBarsArea.setBarsChannelAndNote(7, 10, 75);
+    }
+
+    private void homeMapping(SequencerBarArea sequencerBarsArea, Info curDevice)
+    {
+        if(curDevice.getName().equals("USB Midi 4i4o") && curDevice.getDescription().equals("External MIDI Port"))
+        {
+            try
+            {
+                _midiOut1 = MidiSystem.getMidiDevice(curDevice);
+                _midiOut1.open();
+
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 0);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 1);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 2);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 3);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 4);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 5);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 6);
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 7);
+            }
+            catch (MidiUnavailableException exc)
+            {
+                exc.printStackTrace();
+            }
+            System.out.print(" <---- SELECTED");
+        }
+        if(curDevice.getName().equals("MIDIOUT2 (USB Midi 4i4o)") && curDevice.getDescription().equals("External MIDI Port"))
+        {
+            try
+            {
+                _midiOut2 = MidiSystem.getMidiDevice(curDevice);
+                _midiOut2.open();
+                sequencerBarsArea.setMidiDeviceBar(_midiOut1, 7);
+            }
+            catch (MidiUnavailableException exc)
+            {
+                exc.printStackTrace();
+            }
+            System.out.print(" <---- SELECTED");
+        }
+        sequencerBarsArea.setBarsChannelAndNote(0, 1, 36);
+        sequencerBarsArea.setBarsChannelAndNote(1, 1, 38);
+        sequencerBarsArea.setBarsChannelAndNote(2, 1, 39);
+        sequencerBarsArea.setBarsChannelAndNote(3, 1, 42);
+        sequencerBarsArea.setBarsChannelAndNote(4, 1, 43);
+        sequencerBarsArea.setBarsChannelAndNote(5, 1, 46);
+        sequencerBarsArea.setBarsChannelAndNote(6, 1, 50);
+        sequencerBarsArea.setBarsChannelAndNote(7, 1, 75);
     }
 
     @Override
@@ -408,28 +457,25 @@ public class SequencerMain extends PApplet
             _sequencerBars = new SequencerBar[NUM_TRACKS];
             _sequencerBars[0] = new SequencerBar(new PVector(area.x, area.y), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
             _sequencerBars[0].draw(0);
-            _sequencerBars[0].setActiveNote(36);
             _sequencerBars[1] = new SequencerBar(new PVector(area.x, _sequencerBars[0].getDimensions().y + _sequencerBars[0].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
             _sequencerBars[1].draw(0);
-            _sequencerBars[1].setActiveNote(38);
             _sequencerBars[2] = new SequencerBar(new PVector(area.x, _sequencerBars[1].getDimensions().y + _sequencerBars[1].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
             _sequencerBars[2].draw(0);
-            _sequencerBars[2].setActiveNote(43);
             _sequencerBars[3] = new SequencerBar(new PVector(area.x, _sequencerBars[2].getDimensions().y + _sequencerBars[2].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
             _sequencerBars[3].draw(0);
-            _sequencerBars[3].setActiveNote(50);
             _sequencerBars[4] = new SequencerBar(new PVector(area.x, _sequencerBars[3].getDimensions().y + _sequencerBars[3].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
             _sequencerBars[4].draw(0);
-            _sequencerBars[4].setActiveNote(42);
             _sequencerBars[5] = new SequencerBar(new PVector(area.x, _sequencerBars[4].getDimensions().y + _sequencerBars[4].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
             _sequencerBars[5].draw(0);
-            _sequencerBars[5].setActiveNote(46);
             _sequencerBars[6] = new SequencerBar(new PVector(area.x, _sequencerBars[5].getDimensions().y + _sequencerBars[5].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
             _sequencerBars[6].draw(0);
-            _sequencerBars[6].setActiveNote(39);
             _sequencerBars[7] = new SequencerBar(new PVector(area.x, _sequencerBars[6].getDimensions().y + _sequencerBars[6].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
             _sequencerBars[7].draw(0);
-            _sequencerBars[7].setActiveNote(75);
+        }
+
+        public void setBarsChannelAndNote(int barNr, int channel, int note)
+        {
+            _sequencerBars[barNr].setActiveChannelAndNote(channel, note);
         }
 
         public void setMidiDeviceBar(MidiDevice midiDevice, int barIdx)

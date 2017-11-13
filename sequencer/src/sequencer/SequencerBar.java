@@ -32,6 +32,14 @@ public class SequencerBar
     
     public enum MidiInstrumentType
     {
+        /**
+         * currently this differentiation doesn't make sense since everything is handled equally. 
+         * for future releases it means that either a connected midi device provides different instruments
+         * on the same channel by different notes(SINGLE_CHANNEL_MULTIPLE_INSTRUMENTS), it provides different
+         * instruments by addressing different channels (MULTIPLE_CHANNEL_MULTIPLE_INSTRUMENTS) or it provides 
+         * one instrument on on channel (doesn't exist yet).  
+         */
+        
         UNKNOWN, SINGLE_CHANNEL_MULTIPLE_INSTRUMENTS, MULTIPLE_CHANNEL_MULTIPLE_INSTRUMENTS
     }
 
@@ -210,7 +218,7 @@ public class SequencerBar
                 switch (_trackMidiInstrumentType)
                 {
                     case SINGLE_CHANNEL_MULTIPLE_INSTRUMENTS:
-                        midiMsg.setMessage(ShortMessage.NOTE_ON, 0, _activeNote, 127);
+                        midiMsg.setMessage(ShortMessage.NOTE_ON, _activeChannel, _activeNote, 127);
                         break;
                     case MULTIPLE_CHANNEL_MULTIPLE_INSTRUMENTS:
                         midiMsg.setMessage(ShortMessage.NOTE_ON, _activeChannel, _activeNote, 127);
@@ -258,7 +266,14 @@ public class SequencerBar
         _trackMidiInstrumentType = MidiInstrumentType.MULTIPLE_CHANNEL_MULTIPLE_INSTRUMENTS;
         _activeChannel = channel;
     }
-    
+
+    public void setActiveChannelAndNote(int channel, int note)
+    {
+        _trackMidiInstrumentType = MidiInstrumentType.SINGLE_CHANNEL_MULTIPLE_INSTRUMENTS;
+        _activeChannel = channel;
+        _activeNote = note;
+    }
+
     public void setCurrentMaxSteps(int maxSteps)
     {
         _currentMaxSteps = maxSteps;
