@@ -12,7 +12,6 @@ import processing.core.PApplet;
 import processing.core.PVector;
 import processing.event.MouseEvent;
 import sequencer.SequencerMain.InputState;
-import sequencer.SequencerMain.InputStateType;
 import sequencer.SequencerMain.PlayStatus;
 import sequencer.SequencerMain.SeqButton;
 
@@ -40,7 +39,6 @@ public class SequencerBar
     private static final int MAX_EVENTS_AT_SAME_TIME = 10; //maximum amount of parallel midi events memorized by this object
 
     private int _steps;
-    private int _numTracks;
     private int _stepsPerBeat;
     private int[][] _activeSteps;
     private MidiDevice _midiDevice;
@@ -69,7 +67,6 @@ public class SequencerBar
         _inputState = processingApp.getInputState();
 
         _steps = steps;
-        _numTracks = numTracks;
         _stepsPerBeat = stepsPerBeat;
         _activeSubTrack = 0;
         _activeNote = 36;
@@ -205,11 +202,6 @@ public class SequencerBar
 
     public void sendAdvance(int currentStep)
     {
-        _currentStep++;
-        if(_currentStep >= _currentMaxSteps)
-        {
-            _currentStep = 0;
-        }
         if((_activeSteps[_activeSubTrack][_currentStep] != INACTIVE_SYMBOL) && _muteButton.isNotSet())
         {
             ShortMessage midiMsg = new ShortMessage();
@@ -237,6 +229,11 @@ public class SequencerBar
             {
                 exc.printStackTrace();
             }
+        }
+        _currentStep++;
+        if(_currentStep >= _currentMaxSteps)
+        {
+            _currentStep = 0;
         }
     }
     
