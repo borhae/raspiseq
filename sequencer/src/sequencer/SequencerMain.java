@@ -79,8 +79,8 @@ public class SequencerMain extends PApplet
         {
             System.out.print("Name: " + curDevice.getName());
             System.out.print("  Description: " + curDevice.getDescription());
-//            homeMapping(sequencerBarsArea, curDevice);
-            windowsMapping(sequencerBarsArea, curDevice);
+            homeMapping(sequencerBarsArea, curDevice);
+//            windowsMapping(sequencerBarsArea, curDevice);
             System.out.println();
         }
     }
@@ -156,14 +156,14 @@ public class SequencerMain extends PApplet
             }
             System.out.print(" <---- SELECTED");
         }
-        sequencerBarsArea.setBarsChannelAndNote(0, 1, 36);
-        sequencerBarsArea.setBarsChannelAndNote(1, 1, 38);
-        sequencerBarsArea.setBarsChannelAndNote(2, 1, 39);
-        sequencerBarsArea.setBarsChannelAndNote(3, 1, 42);
-        sequencerBarsArea.setBarsChannelAndNote(4, 1, 43);
-        sequencerBarsArea.setBarsChannelAndNote(5, 1, 46);
-        sequencerBarsArea.setBarsChannelAndNote(6, 1, 50);
-        sequencerBarsArea.setBarsChannelAndNote(7, 1, 75);
+        sequencerBarsArea.setBarsChannelAndNote(0, 0, 36);
+        sequencerBarsArea.setBarsChannelAndNote(1, 0, 38);
+        sequencerBarsArea.setBarsChannelAndNote(2, 0, 39);
+        sequencerBarsArea.setBarsChannelAndNote(3, 0, 42);
+        sequencerBarsArea.setBarsChannelAndNote(4, 0, 43);
+        sequencerBarsArea.setBarsChannelAndNote(5, 0, 46);
+        sequencerBarsArea.setBarsChannelAndNote(6, 0, 50);
+        sequencerBarsArea.setBarsChannelAndNote(7, 0, 75);
     }
 
     @Override
@@ -239,7 +239,6 @@ public class SequencerMain extends PApplet
         {
             _state = newState;
         }
-
         
         public void stepLengthSelectPressed()
         {
@@ -253,7 +252,6 @@ public class SequencerMain extends PApplet
                 default:
                     break;
             }
-            System.out.println("new state: " + _state);
         }
 
         public void maxStepsSet()

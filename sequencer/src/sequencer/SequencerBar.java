@@ -11,6 +11,7 @@ import javax.sound.midi.ShortMessage;
 import processing.core.PApplet;
 import processing.core.PVector;
 import processing.event.MouseEvent;
+import sequencer.SequencerBar.InstrumentSelectButton;
 import sequencer.SequencerMain.InputState;
 import sequencer.SequencerMain.PlayStatus;
 import sequencer.SequencerMain.SeqButton;
@@ -29,6 +30,8 @@ public class SequencerBar
     private int _beatColor;
     private float _controlsWidth;
     private MuteButton _muteButton;
+    private InputState _inputState;
+    private InstrumentSelectButton _instrumentSelectButton;
     
     public enum MidiInstrumentType
     {
@@ -56,7 +59,6 @@ public class SequencerBar
     private int _activeChannel;
     private int _currentStep;
     private int _currentMaxSteps;
-    private InputState _inputState;
 
     public SequencerBar(PVector corner, PVector insets, float areaWidth, float areaHeight, int steps, int numTracks, int stepsPerBeat, SequencerMain processingApp)
     {
@@ -71,7 +73,9 @@ public class SequencerBar
         _inactiveColor = 255;
         _activeColor = 32;
         _beatColor = 128;
-        _muteButton = new MuteButton(processingApp, processingApp, new Rectangle((int)(_corner.x + insets.x), (int)(_corner.y + insets.y), 40, 40), null, null);
+        int ctrlButtonHeight = (int)((_buttonHeight * 3)/8);
+        _muteButton = new MuteButton(processingApp, processingApp, new Rectangle((int)(_corner.x + insets.x), (int)(_corner.y + insets.y), 40, ctrlButtonHeight), null, null);
+        _instrumentSelectButton = new InstrumentSelectButton(processingApp, processingApp, new Rectangle((int)(_corner.x + insets.x), (int)(_corner.y + insets.y) + 40, 40, ctrlButtonHeight), null, null);
         _inputState = processingApp.getInputState();
 
         _steps = steps;
@@ -142,6 +146,7 @@ public class SequencerBar
         }
         _p.fill(prevCol);
         _muteButton.draw();
+        _instrumentSelectButton.draw();
     }
 
     public void mousePressed(MouseEvent event, InputState inputState) 
@@ -277,6 +282,26 @@ public class SequencerBar
     public void setCurrentMaxSteps(int maxSteps)
     {
         _currentMaxSteps = maxSteps;
+    }
+
+    public class InstrumentSelectButton extends SeqButton
+    {
+        public InstrumentSelectButton(SequencerMain processingApp, SequencerMain processingApp2, Rectangle rectangle, PlayStatus playStatus, InputState inputState)
+        {
+            processingApp.super(processingApp2, rectangle, playStatus, inputState);
+        }
+
+        @Override
+        protected void buttonPressed(InputState inputState)
+        {
+            
+        }
+
+        @Override
+        protected void setColor()
+        {
+            _mainApp.fill(140, 0, 140);
+        }
     }
 
     public class MuteButton extends SeqButton
