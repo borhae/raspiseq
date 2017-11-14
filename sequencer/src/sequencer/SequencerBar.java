@@ -13,6 +13,7 @@ import processing.core.PVector;
 import processing.event.MouseEvent;
 import sequencer.SequencerBar.InstrumentSelectButton;
 import sequencer.SequencerMain.InputState;
+import sequencer.SequencerMain.InputStateType;
 import sequencer.SequencerMain.PlayStatus;
 import sequencer.SequencerMain.SeqButton;
 
@@ -152,6 +153,7 @@ public class SequencerBar
     public void mousePressed(MouseEvent event, InputState inputState) 
     {
         _muteButton.mousePressed(event, inputState);
+        _instrumentSelectButton.mousePressed(event, inputState);
         int mouseY = event.getY();
         float cornerY = _corner.y + _insets.y;
         if(mouseY > cornerY && mouseY < (cornerY + _buttonHeight))
@@ -294,7 +296,7 @@ public class SequencerBar
         @Override
         protected void buttonPressed(InputState inputState)
         {
-            
+            _inputState.selectInstrumentPressed();
         }
 
         @Override

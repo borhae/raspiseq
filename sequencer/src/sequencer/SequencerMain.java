@@ -174,9 +174,7 @@ public class SequencerMain extends PApplet
         if(_drawTimer <= 0)
         {
             _drawTimer = 100;
-            _playButton.draw();
-            _stopButton.draw();
-            _stepLengthSelectButton.draw();
+            drawMainButtons();
         }
         else
         {
@@ -199,17 +197,50 @@ public class SequencerMain extends PApplet
                     _currentStep = 0;
                 }
             }
-            background(255);
-            _playButton.draw();
-            _stopButton.draw();
-            _stepLengthSelectButton.draw();
-            _sequencerBarsArea.draw(_currentStep);
-            showCurrentStepAsNumber();
+            drawAll();
         }
         else
         {
             _stepTimer = _stepTimer - _passedTime;
         }
+    }
+
+    private void drawAll()
+    {
+        InputStateType curState = _inputState.getState();
+        switch (curState)
+        {
+            case REGULAR:
+            case STEP_LENGTH_SELECT_ENABLED:
+                drawTrackScreen();
+                break;
+            case INSTRUMENT_SELECT_ACTIVE:
+                drawInstrumentSelectScreen();
+                break;
+            default:
+                break;
+        }
+        drawTrackScreen();
+    }
+
+    private void drawInstrumentSelectScreen()
+    {
+        background(255);
+    }
+
+    private void drawTrackScreen()
+    {
+        background(255);
+        drawMainButtons();
+        _sequencerBarsArea.draw(_currentStep);
+        showCurrentStepAsNumber();
+    }
+
+    private void drawMainButtons()
+    {
+        _playButton.draw();
+        _stopButton.draw();
+        _stepLengthSelectButton.draw();
     }
     
     private void showCurrentStepAsNumber()
@@ -225,6 +256,11 @@ public class SequencerMain extends PApplet
     @Override
     public void mousePressed(MouseEvent event)
     {
+        if(_inputState.getState() == InputStateType.INSTRUMENT_SELECT_ACTIVE)
+        {
+            _inputState.setState(InputStateType.REGULAR);
+            return;
+        }
         _sequencerBarsArea.mousePressed(event, _inputState);
         _playButton.mousePressed(event, _inputState);
         _stopButton.mousePressed(event, _inputState);
@@ -263,11 +299,20 @@ public class SequencerMain extends PApplet
         {
             return _state;
         }
+
+        public void selectInstrumentPressed()
+        {
+            System.out.println("instrument select pressed");
+            if(_state == InputStateType.REGULAR)
+            {
+                _state = InputStateType.INSTRUMENT_SELECT_ACTIVE;
+            }
+        }
     }
     
     public enum InputStateType
     {
-        REGULAR, STEP_LENGTH_SELECT_ENABLED
+        REGULAR, STEP_LENGTH_SELECT_ENABLED, INSTRUMENT_SELECT_ACTIVE
     }
 
     public abstract class SeqButton
