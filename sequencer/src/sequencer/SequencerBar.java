@@ -11,13 +11,13 @@ import javax.sound.midi.ShortMessage;
 import processing.core.PApplet;
 import processing.core.PVector;
 import processing.event.MouseEvent;
-import sequencer.SequencerBar.InstrumentSelectButton;
+import sequencer.SequencerMain.DrawType;
 import sequencer.SequencerMain.InputState;
-import sequencer.SequencerMain.InputStateType;
 import sequencer.SequencerMain.PlayStatus;
+import sequencer.SequencerMain.ScreenElement;
 import sequencer.SequencerMain.SeqButton;
 
-public class SequencerBar
+public class SequencerBar implements ScreenElement
 {
     private PApplet _p;
     private PVector _insets;
@@ -107,7 +107,8 @@ public class SequencerBar
         return new Rectangle((int)_corner.x, (int)_corner.y, (int)_width, (int)getHeight());
     }
 
-    public void draw(int beat)
+    @Override
+    public void draw(DrawType type)
     {
         int prevCol = _p.getGraphics().fillColor;
         _p.fill(_inactiveColor);
@@ -146,10 +147,10 @@ public class SequencerBar
             _p.rect(stepIdx * _buttonWidth + _insets.x + _corner.x + _controlsWidth, _insets.y + _corner.y, _buttonWidth, _buttonHeight);
         }
         _p.fill(prevCol);
-        _muteButton.draw();
-        _instrumentSelectButton.draw();
+        _muteButton.draw(type);
+        _instrumentSelectButton.draw(type);
     }
-
+    
     public void mousePressed(MouseEvent event, InputState inputState) 
     {
         _muteButton.mousePressed(event, inputState);
@@ -172,7 +173,7 @@ public class SequencerBar
                     default:
                         break;
                 }
-                draw(0);
+                draw(DrawType.NO_STEP_ADVANCE);
             }
         }
     }
