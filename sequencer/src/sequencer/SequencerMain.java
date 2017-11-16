@@ -15,10 +15,11 @@ import processing.core.PApplet;
 import processing.core.PFont;
 import processing.core.PVector;
 import processing.event.MouseEvent;
-import sequencer.SequencerMain.PlayStatusType;
 
 public class SequencerMain extends PApplet
 {
+    private static final String INSTRUMENT_SELECT_SCREEN_ID = "instrumentSelect";
+    private static final String TRACK_SCREEN_ID = "trackScreen";
     private static final int STEPS_PER_BEAT = 4;
     private static final int STEPS = 32;
     private static final int NUM_TRACKS = 8;
@@ -28,11 +29,10 @@ public class SequencerMain extends PApplet
     private long _passedTime;
     private int _beatsPerMinute;
     private int _currentStep;
-    private PFont _f;
+    private PFont _counterFont;
+    private PFont _deviceInfoFont;
     private int _oldTime;
     private int _millisToPass;
-    private MidiDevice _midiOut1;
-    private MidiDevice _midiOut2;
     private SequencerBarArea _sequencerBarsArea;
     private InputState _inputState;
     private Screen _currentScreen;
@@ -61,7 +61,8 @@ public class SequencerMain extends PApplet
         _currentStep = 0;
         _millisToPass = 60000 / (_beatsPerMinute * STEPS_PER_BEAT);
 
-        _f = createFont("Arial", 48, true);
+        _counterFont = createFont("Arial", 48, true);
+        _deviceInfoFont = createFont("Arial", 12, true);
 
         _playStatus = new PlayStatus(PlayStatusType.STOPPED);
 
@@ -72,9 +73,12 @@ public class SequencerMain extends PApplet
         TracksScreen tracksScreen = new TracksScreen(this);
         tracksScreen.create();
         _sequencerBarsArea = tracksScreen.getSequencerArea();
-        InstrumentSelectScreen  instrumentSelectScreen = new InstrumentSelectScreen(this);
-        _screens.put("trackScreen", tracksScreen);
-        _screens.put("instrumentSelect", instrumentSelectScreen);
+        
+        InstrumentSelectScreen  instrumentSelectScreen = new InstrumentSelectScreen(this, tracksScreen.getSequencerArea());
+        instrumentSelectScreen.create();
+        
+        _screens.put(TRACK_SCREEN_ID, tracksScreen);
+        _screens.put(INSTRUMENT_SELECT_SCREEN_ID, instrumentSelectScreen);
         
         _currentScreen = tracksScreen;
         _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
@@ -89,8 +93,8 @@ public class SequencerMain extends PApplet
         {
             System.out.print("Name: " + curDevice.getName());
             System.out.print("  Description: " + curDevice.getDescription());
-//            homeMapping(sequencerBarsArea, curDevice);
-            windowsMapping(sequencerBarsArea, curDevice);
+            homeMapping(sequencerBarsArea, curDevice);
+//            windowsMapping(sequencerBarsArea, curDevice);
             System.out.println();
         }
     }
@@ -101,16 +105,16 @@ public class SequencerMain extends PApplet
         {
             try
             {
-                _midiOut1 = MidiSystem.getMidiDevice(curDevice);
-                _midiOut1.open();
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 0);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 1);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 2);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 3);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 4);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 5);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 6);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 7);
+                MidiDevice midiOut1 = MidiSystem.getMidiDevice(curDevice);
+                midiOut1.open();
+                sequencerBarsArea.setMidiDeviceForTrack(midiOut1, 0);
+                sequencerBarsArea.setMidiDeviceForTrack(midiOut1, 1);
+                sequencerBarsArea.setMidiDeviceForTrack(midiOut1, 2);
+                sequencerBarsArea.setMidiDeviceForTrack(midiOut1, 3);
+                sequencerBarsArea.setMidiDeviceForTrack(midiOut1, 4);
+                sequencerBarsArea.setMidiDeviceForTrack(midiOut1, 5);
+                sequencerBarsArea.setMidiDeviceForTrack(midiOut1, 6);
+                sequencerBarsArea.setMidiDeviceForTrack(midiOut1, 7);
             }
             catch (MidiUnavailableException exc)
             {
@@ -130,21 +134,23 @@ public class SequencerMain extends PApplet
 
     private void homeMapping(SequencerBarArea sequencerBarsArea, Info curDevice)
     {
+        MidiDevice device1 = null;
+        MidiDevice device2 = null;
         if(curDevice.getName().equals("USB Midi 4i4o") && curDevice.getDescription().equals("External MIDI Port"))
         {
             try
             {
-                _midiOut1 = MidiSystem.getMidiDevice(curDevice);
-                _midiOut1.open();
+                device1 = MidiSystem.getMidiDevice(curDevice);
+                device1.open();
 
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 0);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 1);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 2);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 3);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 4);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 5);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 6);
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 7);
+                sequencerBarsArea.setMidiDeviceForTrack(device1, 0);
+                sequencerBarsArea.setMidiDeviceForTrack(device1, 1);
+                sequencerBarsArea.setMidiDeviceForTrack(device1, 2);
+                sequencerBarsArea.setMidiDeviceForTrack(device1, 3);
+                sequencerBarsArea.setMidiDeviceForTrack(device1, 4);
+                sequencerBarsArea.setMidiDeviceForTrack(device1, 5);
+                sequencerBarsArea.setMidiDeviceForTrack(device1, 6);
+                sequencerBarsArea.setMidiDeviceForTrack(device1, 7);
             }
             catch (MidiUnavailableException exc)
             {
@@ -156,9 +162,9 @@ public class SequencerMain extends PApplet
         {
             try
             {
-                _midiOut2 = MidiSystem.getMidiDevice(curDevice);
-                _midiOut2.open();
-                sequencerBarsArea.setMidiDeviceForTrack(_midiOut1, 7);
+                device2 = MidiSystem.getMidiDevice(curDevice);
+                device2.open();
+                sequencerBarsArea.setMidiDeviceForTrack(device1, 7);
             }
             catch (MidiUnavailableException exc)
             {
@@ -213,6 +219,7 @@ public class SequencerMain extends PApplet
                 default:
                     break;
             }
+            background(255);
             _currentScreen.draw(DrawType.STEP_ADVANCE);
             showCurrentStepAsNumber();
         }
@@ -224,7 +231,7 @@ public class SequencerMain extends PApplet
 
     private void showCurrentStepAsNumber()
     {
-        textFont(_f);
+        textFont(_counterFont);
         textAlign(LEFT);
         int previousColor = getGraphics().fillColor;
         fill(0);
@@ -235,11 +242,6 @@ public class SequencerMain extends PApplet
     @Override
     public void mousePressed(MouseEvent event)
     {
-        if(_inputState.getState() == InputStateType.INSTRUMENT_SELECT_ACTIVE)
-        {
-            _inputState.setState(InputStateType.REGULAR);
-            return;
-        }
         _currentScreen.mousePressed(event, _inputState);
     }
 
@@ -251,6 +253,7 @@ public class SequencerMain extends PApplet
     public class InputState
     {
         private InputStateType _state;
+        private int _intstrumentSelectingTrack;
 
         public void setState(InputStateType newState)
         {
@@ -281,12 +284,24 @@ public class SequencerMain extends PApplet
             return _state;
         }
 
-        public void selectInstrumentPressed()
+        public void selectInstrumentPressed(int instrumentSelectingTrack)
         {
-            System.out.println("instrument select pressed");
             if(_state == InputStateType.REGULAR)
             {
+                _intstrumentSelectingTrack = instrumentSelectingTrack;
                 _state = InputStateType.INSTRUMENT_SELECT_ACTIVE;
+                background(255);
+                _currentScreen = _screens.get(INSTRUMENT_SELECT_SCREEN_ID);
+            }
+        }
+
+        public void instrumentSelectedPressed()
+        {
+            if(_state == InputStateType.INSTRUMENT_SELECT_ACTIVE)
+            {
+                _state = InputStateType.REGULAR;
+                background(255);
+                _currentScreen = _screens.get(TRACK_SCREEN_ID);
             }
         }
     }
@@ -475,21 +490,22 @@ public class SequencerMain extends PApplet
         {
             PVector insets = new PVector(10, 5);
             _sequencerBars = new SequencerBar[NUM_TRACKS];
-            _sequencerBars[0] = new SequencerBar(new PVector(area.x, area.y), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
+            _sequencerBars[0] = new SequencerBar(new PVector(area.x, area.y), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, 0, mainApp);
             _sequencerBars[0].draw(DrawType.NO_STEP_ADVANCE);
-            _sequencerBars[1] = new SequencerBar(new PVector(area.x, _sequencerBars[0].getDimensions().y + _sequencerBars[0].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
+            _sequencerBars[1] = 
+                    new SequencerBar(new PVector(area.x, _sequencerBars[0].getDimensions().y + _sequencerBars[0].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, 1, mainApp);
             _sequencerBars[1].draw(DrawType.NO_STEP_ADVANCE);
-            _sequencerBars[2] = new SequencerBar(new PVector(area.x, _sequencerBars[1].getDimensions().y + _sequencerBars[1].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
+            _sequencerBars[2] = new SequencerBar(new PVector(area.x, _sequencerBars[1].getDimensions().y + _sequencerBars[1].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, 2, mainApp);
             _sequencerBars[2].draw(DrawType.NO_STEP_ADVANCE);
-            _sequencerBars[3] = new SequencerBar(new PVector(area.x, _sequencerBars[2].getDimensions().y + _sequencerBars[2].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
+            _sequencerBars[3] = new SequencerBar(new PVector(area.x, _sequencerBars[2].getDimensions().y + _sequencerBars[2].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, 3, mainApp);
             _sequencerBars[3].draw(DrawType.NO_STEP_ADVANCE);
-            _sequencerBars[4] = new SequencerBar(new PVector(area.x, _sequencerBars[3].getDimensions().y + _sequencerBars[3].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
+            _sequencerBars[4] = new SequencerBar(new PVector(area.x, _sequencerBars[3].getDimensions().y + _sequencerBars[3].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, 4, mainApp);
             _sequencerBars[4].draw(DrawType.NO_STEP_ADVANCE);
-            _sequencerBars[5] = new SequencerBar(new PVector(area.x, _sequencerBars[4].getDimensions().y + _sequencerBars[4].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
+            _sequencerBars[5] = new SequencerBar(new PVector(area.x, _sequencerBars[4].getDimensions().y + _sequencerBars[4].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, 5, mainApp);
             _sequencerBars[5].draw(DrawType.NO_STEP_ADVANCE);
-            _sequencerBars[6] = new SequencerBar(new PVector(area.x, _sequencerBars[5].getDimensions().y + _sequencerBars[5].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
+            _sequencerBars[6] = new SequencerBar(new PVector(area.x, _sequencerBars[5].getDimensions().y + _sequencerBars[5].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, 6, mainApp);
             _sequencerBars[6].draw(DrawType.NO_STEP_ADVANCE);
-            _sequencerBars[7] = new SequencerBar(new PVector(area.x, _sequencerBars[6].getDimensions().y + _sequencerBars[6].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, mainApp);
+            _sequencerBars[7] = new SequencerBar(new PVector(area.x, _sequencerBars[6].getDimensions().y + _sequencerBars[6].getDimensions().height), insets, area.width, area.height, STEPS, NUM_TRACKS, STEPS_PER_BEAT, 7, mainApp);
             _sequencerBars[7].draw(DrawType.NO_STEP_ADVANCE);
         }
 
@@ -601,9 +617,13 @@ public class SequencerMain extends PApplet
     public class InstrumentSelectScreen implements Screen
     {
         private List<Info> _devices;
+        private List<ScreenElement> _elements;
+        private SequencerMain _mainApp;
+        private SequencerBarArea _sequencerTracks;
 
-        public InstrumentSelectScreen(SequencerMain sequencerMain)
+        public InstrumentSelectScreen(SequencerMain sequencerMain, SequencerBarArea sequencerBarArea)
         {
+            _mainApp = sequencerMain;
             MidiDevice.Info[] deviceInfos = MidiSystem.getMidiDeviceInfo();
             _devices = new ArrayList<>();
             for (Info curDevice : deviceInfos)
@@ -613,29 +633,82 @@ public class SequencerMain extends PApplet
                 System.out.println();
                 _devices.add(curDevice);
             }
+            _elements = new ArrayList<>();
+            _sequencerTracks = sequencerBarArea;
+        }
+        
+        @Override
+        public void create()
+        {
+            int x = 20;
+            int y = 20;
+            for (Info curDev : _devices)
+            {
+                _elements.add(new DeviceButton(_mainApp, x, y, curDev, _playStatus, _inputState));
+                y = y  + 30;
+            }
         }
 
         @Override
         public void add(ScreenElement element)
         {
+            _elements.add(element);
         }
 
         @Override
         public void mousePressed(MouseEvent event, InputState inputState)
         {
+            for (ScreenElement curElem : _elements)
+            {
+                curElem.mousePressed(event, inputState);
+            }
         }
 
         @Override
         public void draw(DrawType type)
         {
-        }
-
-        @Override
-        public void create()
-        {
+            for (ScreenElement curElem : _elements)
+            {
+                curElem.draw(type);
+            }
         }
     }
 
+    public class DeviceButton extends SeqButton
+    {
+        private Info _deviceInfo;
+
+        public DeviceButton(SequencerMain mainApp, int x, int y, Info deviceInfo, PlayStatus playStatus, InputState inputState)
+        {
+            super(mainApp, new Rectangle(x, y, 400, 25), playStatus, inputState);
+            _deviceInfo = deviceInfo;
+        }
+
+        @Override
+        protected void buttonPressed(InputState inputState)
+        {
+            inputState.instrumentSelectedPressed();
+        }
+
+        @Override
+        protected void setColor()
+        {
+            fill(0, 128, 128);
+        }
+
+        @Override
+        public void draw(DrawType type)
+        {
+            super.draw(type);
+            textFont(_deviceInfoFont);
+            textAlign(LEFT);
+            int previousColor = getGraphics().fillColor;
+            fill(0);
+            text("N: " + _deviceInfo.getName() + " D: " + _deviceInfo.getDescription(), _area.x + 10, _area.y + 18);
+            fill(previousColor);
+        }
+    }
+    
     public interface Screen
     {
         void add(ScreenElement element);

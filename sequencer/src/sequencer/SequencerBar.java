@@ -33,6 +33,7 @@ public class SequencerBar implements ScreenElement
     private MuteButton _muteButton;
     private InputState _inputState;
     private InstrumentSelectButton _instrumentSelectButton;
+    private int _id;
     
     public enum MidiInstrumentType
     {
@@ -61,8 +62,9 @@ public class SequencerBar implements ScreenElement
     private int _currentStep;
     private int _currentMaxSteps;
 
-    public SequencerBar(PVector corner, PVector insets, float areaWidth, float areaHeight, int steps, int numTracks, int stepsPerBeat, SequencerMain processingApp)
+    public SequencerBar(PVector corner, PVector insets, float areaWidth, float areaHeight, int steps, int numTracks, int stepsPerBeat, int thisTrackID, SequencerMain processingApp)
     {
+        _id = thisTrackID;
         _p = processingApp;
         _insets = insets;
         _width = areaWidth;
@@ -297,7 +299,7 @@ public class SequencerBar implements ScreenElement
         @Override
         protected void buttonPressed(InputState inputState)
         {
-            _inputState.selectInstrumentPressed();
+            _inputState.selectInstrumentPressed(_id);
         }
 
         @Override
