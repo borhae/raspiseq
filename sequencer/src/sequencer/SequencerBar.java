@@ -3,9 +3,7 @@ package sequencer;
 import java.awt.Rectangle;
 
 import javax.sound.midi.InvalidMidiDataException;
-import javax.sound.midi.MidiDevice;
 import javax.sound.midi.MidiUnavailableException;
-import javax.sound.midi.Receiver;
 import javax.sound.midi.ShortMessage;
 
 import processing.core.PApplet;
@@ -16,13 +14,13 @@ import sequencer.SequencerMain.InputState;
 import sequencer.SequencerMain.PlayStatus;
 import sequencer.SequencerMain.ScreenElement;
 import sequencer.SequencerMain.SeqButton;
+import sequencer.SequencerMain.TrackModel;
 
 public class SequencerBar implements ScreenElement
 {
     private PApplet _p;
     private PVector _insets;
     private float _width;
-    private float _height;
     private PVector _corner;
     private float _buttonHeight;
     private float _buttonWidth;
@@ -33,7 +31,6 @@ public class SequencerBar implements ScreenElement
     private MuteButton _muteButton;
     private InputState _inputState;
     private InstrumentSelectButton _instrumentSelectButton;
-    private int _id;
     
     public enum MidiInstrumentType
     {
@@ -51,28 +48,24 @@ public class SequencerBar implements ScreenElement
     private static final int INACTIVE_SYMBOL = -1; //no note/instrument
     private static final int MAX_EVENTS_AT_SAME_TIME = 10; //maximum amount of parallel midi events memorized by this object
 
+    private TrackModel _trackModel;
     private int _steps;
     private int _stepsPerBeat;
     private int[][] _activeSteps;
-    private MidiDevice _midiDevice;
     private int _activeSubTrack;
-    private int _activeNote;
     private MidiInstrumentType _trackMidiInstrumentType;
-    private int _activeChannel;
     private int _currentStep;
     private int _currentMaxSteps;
 
-    public SequencerBar(PVector corner, PVector insets, float areaWidth, float areaHeight, int steps, int numTracks, int stepsPerBeat, int thisTrackID, SequencerMain processingApp)
+    public SequencerBar(PVector corner, PVector insets, int areaWidth, int trackHeight, SequencerMain.TrackModel trackModel, int cnt, SequencerMain processingApp)
     {
-        _id = thisTrackID;
         _p = processingApp;
         _insets = insets;
         _width = areaWidth;
-        _height = areaHeight;
         _corner = corner;
-        _buttonHeight = (_height/numTracks)  - 2 * _insets.y;
+        _buttonHeight = trackHeight  - 2 * _insets.y;
         _controlsWidth = 60;
-        _buttonWidth = (_width - 2 * _insets.x - _controlsWidth )/steps;
+        _buttonWidth = (_width - 2 * _insets.x - _controlsWidth )/trackModel.getNumberOfSteps();
         _inactiveColor = 255;
         _activeColor = 32;
         _beatColor = 128;
@@ -81,14 +74,13 @@ public class SequencerBar implements ScreenElement
         _instrumentSelectButton = new InstrumentSelectButton(processingApp, processingApp, new Rectangle((int)(_corner.x + insets.x), (int)(_corner.y + insets.y) + 40, 40, ctrlButtonHeight), null, null);
         _inputState = processingApp.getInputState();
 
-        _steps = steps;
-        _stepsPerBeat = stepsPerBeat;
+        _trackModel = trackModel;
+        _steps = trackModel.getNumberOfSteps();
+        _stepsPerBeat = trackModel.getStepsPerBeat();
         _activeSubTrack = 0;
-        _activeNote = 36;
-        _activeChannel = 0;
         _currentStep = 0;
-        _currentMaxSteps = steps;
-        _activeSteps = new int[MAX_EVENTS_AT_SAME_TIME][steps]; 
+        _currentMaxSteps = _steps;
+        _activeSteps = new int[MAX_EVENTS_AT_SAME_TIME][_steps]; 
         for(int curNC = 0; curNC < MAX_EVENTS_AT_SAME_TIME; curNC++)
         {
             for (int stepIdx = 0; stepIdx < _activeSteps[curNC].length; stepIdx++)
@@ -96,7 +88,7 @@ public class SequencerBar implements ScreenElement
                 _activeSteps[curNC][stepIdx] = INACTIVE_SYMBOL; //no note/instrument
             }
         }
-        _trackMidiInstrumentType = MidiInstrumentType.UNKNOWN;
+        _trackMidiInstrumentType = trackModel.getInstrumentType();
     }
 
     public float getHeight()
@@ -191,7 +183,7 @@ public class SequencerBar implements ScreenElement
     {
         if(_activeSteps[_activeSubTrack][activatedButton] == INACTIVE_SYMBOL)
         {
-            _activeSteps[_activeSubTrack][activatedButton] = _activeNote;
+            _activeSteps[_activeSubTrack][activatedButton] = _trackModel.getNote();
         }
         else
         {
@@ -228,16 +220,16 @@ public class SequencerBar implements ScreenElement
                 switch (_trackMidiInstrumentType)
                 {
                     case SINGLE_CHANNEL_MULTIPLE_INSTRUMENTS:
-                        midiMsg.setMessage(ShortMessage.NOTE_ON, _activeChannel, _activeNote, 127);
+                        midiMsg.setMessage(ShortMessage.NOTE_ON, _trackModel.getChannel(), _trackModel.getNote(), 127);
+                        _trackModel.getMidiDevice().getReceiver().send(midiMsg, -1);
                         break;
                     case MULTIPLE_CHANNEL_MULTIPLE_INSTRUMENTS:
-                        midiMsg.setMessage(ShortMessage.NOTE_ON, _activeChannel, _activeNote, 127);
+                        midiMsg.setMessage(ShortMessage.NOTE_ON, _trackModel.getChannel(), _trackModel.getNote(), 127);
+                        _trackModel.getMidiDevice().getReceiver().send(midiMsg, -1);
                         break;
                     default:
-                        return;
+                        break;
                 }
-                Receiver receiver = _midiDevice.getReceiver();
-                receiver.send(midiMsg, -1);
             }
             catch (InvalidMidiDataException exc)
             {
@@ -260,30 +252,6 @@ public class SequencerBar implements ScreenElement
         _currentStep = 0;
     }
 
-    public void setMidiDevice(MidiDevice midiDevice)
-    {
-        _midiDevice = midiDevice;
-    }
-
-    public void setActiveNote(int note)
-    {
-        _trackMidiInstrumentType = MidiInstrumentType.SINGLE_CHANNEL_MULTIPLE_INSTRUMENTS;
-        _activeNote = note;
-    }
-
-    public void setActiveChannel(int channel)
-    {
-        _trackMidiInstrumentType = MidiInstrumentType.MULTIPLE_CHANNEL_MULTIPLE_INSTRUMENTS;
-        _activeChannel = channel;
-    }
-
-    public void setActiveChannelAndNote(int channel, int note)
-    {
-        _trackMidiInstrumentType = MidiInstrumentType.SINGLE_CHANNEL_MULTIPLE_INSTRUMENTS;
-        _activeChannel = channel;
-        _activeNote = note;
-    }
-
     public void setCurrentMaxSteps(int maxSteps)
     {
         _currentMaxSteps = maxSteps;
@@ -299,7 +267,7 @@ public class SequencerBar implements ScreenElement
         @Override
         protected void buttonPressed(InputState inputState)
         {
-            _inputState.selectInstrumentPressed(_id);
+            _inputState.selectInstrumentPressed(_trackModel);
         }
 
         @Override
@@ -342,5 +310,10 @@ public class SequencerBar implements ScreenElement
                 _mainApp.fill(128);
             }
         }
+    }
+
+    public static float computHeight(int totalHeight, int numTracks, float y)
+    {
+        return (totalHeight/numTracks)  - 2 * y;
     }
 }
