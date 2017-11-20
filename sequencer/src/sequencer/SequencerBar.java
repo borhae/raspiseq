@@ -3,6 +3,7 @@ package sequencer;
 import java.awt.Rectangle;
 
 import javax.sound.midi.InvalidMidiDataException;
+import javax.sound.midi.MidiMessage;
 import javax.sound.midi.MidiUnavailableException;
 import javax.sound.midi.ShortMessage;
 
@@ -220,11 +221,11 @@ public class SequencerBar implements ScreenElement
                 switch (_trackMidiInstrumentType)
                 {
                     case SINGLE_CHANNEL_MULTIPLE_INSTRUMENTS:
-                        midiMsg.setMessage(ShortMessage.NOTE_ON, _trackModel.getChannel(), _trackModel.getNote(), 127);
+                        midiMsg.setMessage(ShortMessage.NOTE_ON, _trackModel.getChannel(), _trackModel.getNote(), 120);
                         _trackModel.getMidiDevice().getReceiver().send(midiMsg, -1);
                         break;
                     case MULTIPLE_CHANNEL_MULTIPLE_INSTRUMENTS:
-                        midiMsg.setMessage(ShortMessage.NOTE_ON, _trackModel.getChannel(), _trackModel.getNote(), 127);
+                        midiMsg.setMessage(ShortMessage.NOTE_ON, _trackModel.getChannel(), _trackModel.getNote(), 120);
                         _trackModel.getMidiDevice().getReceiver().send(midiMsg, -1);
                         break;
                     default:
@@ -250,6 +251,25 @@ public class SequencerBar implements ScreenElement
     public void sendStopped()
     {
         _currentStep = 0;
+        ShortMessage offMsg = new ShortMessage();
+        try
+        {
+            for(int channelNr = 0; channelNr < 16; channelNr++)
+            {
+                offMsg.setMessage(ShortMessage.NOTE_ON, 0, 0, 0);
+                _trackModel.getMidiDevice().getReceiver().send(offMsg, -1);
+                offMsg.setMessage(ShortMessage.NOTE_OFF, 0, 0);
+                _trackModel.getMidiDevice().getReceiver().send(offMsg, -1);
+            }
+        }
+        catch (InvalidMidiDataException exc)
+        {
+            exc.printStackTrace();
+        }
+        catch (MidiUnavailableException exc)
+        {
+            exc.printStackTrace();
+        }
     }
 
     public void setCurrentMaxSteps(int maxSteps)
