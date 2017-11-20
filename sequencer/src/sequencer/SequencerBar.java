@@ -256,9 +256,7 @@ public class SequencerBar implements ScreenElement
         {
             for(int channelNr = 0; channelNr < 16; channelNr++)
             {
-                offMsg.setMessage(ShortMessage.NOTE_ON, 0, 0, 0);
-                _trackModel.getMidiDevice().getReceiver().send(offMsg, -1);
-                offMsg.setMessage(ShortMessage.NOTE_OFF, 0, 0);
+                offMsg.setMessage(ShortMessage.NOTE_ON, _trackModel.getChannel(), _trackModel.getNote(), 0);
                 _trackModel.getMidiDevice().getReceiver().send(offMsg, -1);
             }
         }
