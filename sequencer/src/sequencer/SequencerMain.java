@@ -7,12 +7,11 @@ import java.util.List;
 import java.util.Map;
 
 import javax.sound.midi.MidiDevice;
-import javax.sound.midi.MidiMessage;
 import javax.sound.midi.MidiDevice.Info;
+import javax.sound.midi.MidiMessage;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.MidiUnavailableException;
 import javax.sound.midi.Receiver;
-import javax.sound.midi.Sequencer;
 import javax.sound.midi.ShortMessage;
 import javax.sound.midi.Transmitter;
 
@@ -125,6 +124,7 @@ public class SequencerMain extends PApplet
                 }
                 System.out.print(" <---- SELECTED");
             }
+            System.out.println();
             tracksModels.get(0).setNote(36);
             tracksModels.get(1).setNote(38);
             tracksModels.get(2).setNote(39);
@@ -732,6 +732,7 @@ public class SequencerMain extends PApplet
             {
                 if(curDevice.getName().equals("Keystation Mini 32") && curDevice.getDescription().equals("No details available") )
                 {
+                    System.out.println("listening to this device");
                     try
                     {
                         _midiInDevice = MidiSystem.getMidiDevice(curDevice);

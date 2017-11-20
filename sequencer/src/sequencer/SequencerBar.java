@@ -3,7 +3,6 @@ package sequencer;
 import java.awt.Rectangle;
 
 import javax.sound.midi.InvalidMidiDataException;
-import javax.sound.midi.MidiMessage;
 import javax.sound.midi.MidiUnavailableException;
 import javax.sound.midi.ShortMessage;
 
@@ -213,11 +212,25 @@ public class SequencerBar implements ScreenElement
 
     public void sendAdvance(int currentStep)
     {
+        ShortMessage noteOffMsg = new ShortMessage();
+        try
+        {
+            noteOffMsg.setMessage(ShortMessage.NOTE_OFF, _trackModel.getChannel(), _trackModel.getNote(), 0);
+            _trackModel.getMidiDevice().getReceiver().send(noteOffMsg, -1);
+        }
+        catch (MidiUnavailableException exc1)
+        {
+            exc1.printStackTrace();
+        }
+        catch (InvalidMidiDataException exc)
+        {
+            exc.printStackTrace();
+        }
         if((_activeSteps[_activeSubTrack][_currentStep] != INACTIVE_SYMBOL) && _muteButton.isNotSet())
         {
-            ShortMessage midiMsg = new ShortMessage();
             try
             {
+                ShortMessage midiMsg = new ShortMessage();
                 switch (_trackMidiInstrumentType)
                 {
                     case SINGLE_CHANNEL_MULTIPLE_INSTRUMENTS:
@@ -251,14 +264,10 @@ public class SequencerBar implements ScreenElement
     public void sendStopped()
     {
         _currentStep = 0;
-        ShortMessage offMsg = new ShortMessage();
         try
         {
-            for(int channelNr = 0; channelNr < 16; channelNr++)
-            {
-                offMsg.setMessage(ShortMessage.NOTE_ON, _trackModel.getChannel(), _trackModel.getNote(), 0);
-                _trackModel.getMidiDevice().getReceiver().send(offMsg, -1);
-            }
+            sendNoteOff();
+            sendNoteOff();
         }
         catch (InvalidMidiDataException exc)
         {
@@ -268,6 +277,13 @@ public class SequencerBar implements ScreenElement
         {
             exc.printStackTrace();
         }
+    }
+
+    private void sendNoteOff() throws InvalidMidiDataException, MidiUnavailableException
+    {
+        ShortMessage offMsg = new ShortMessage();
+        offMsg.setMessage(ShortMessage.NOTE_ON, _trackModel.getChannel(), _trackModel.getNote(), 0);
+        _trackModel.getMidiDevice().getReceiver().send(offMsg, -1);
     }
 
     public void setCurrentMaxSteps(int maxSteps)
