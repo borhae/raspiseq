@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.midi.MidiDevice;
 import javax.sound.midi.MidiDevice.Info;
 import javax.sound.midi.MidiMessage;
@@ -19,7 +20,6 @@ import processing.core.PApplet;
 import processing.core.PFont;
 import processing.core.PVector;
 import processing.event.MouseEvent;
-import sequencer.SequencerBar.MidiInstrumentType;
 
 public class SequencerMain extends PApplet
 {
@@ -38,12 +38,11 @@ public class SequencerMain extends PApplet
     private PFont _instrumentSelectFont;
     private int _oldTime;
     private int _millisToPass;
-    private SequencerBarArea _sequencerBarsArea;
     private InputState _inputState;
     private Screen _currentScreen;
     private PlayStatus _playStatus;
     private Map<String, Screen> _screens;
-    private List<TrackModel> _tracksModels;
+    private TracksModel _tracksModel;
     
     public static void main(String[] args)
     {
@@ -75,17 +74,11 @@ public class SequencerMain extends PApplet
         _inputState = new InputState();
         _inputState.setState(InputStateType.REGULAR);
 
-        _tracksModels = new ArrayList<TrackModel>();
-        for(int trackCnt = 0; trackCnt < NUM_TRACKS; trackCnt++)
-        {
-            _tracksModels.add(new TrackModel(STEPS, STEPS_PER_BEAT));
-        }
-        mapMidi(_tracksModels);
+        _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT); 
         
         _screens = new HashMap<>();
-        TracksScreen tracksScreen = new TracksScreen(this, _tracksModels);
+        TracksScreen tracksScreen = new TracksScreen(this, _tracksModel);
         tracksScreen.create();
-        _sequencerBarsArea = tracksScreen.getSequencerArea();
         
         InstrumentSelectScreen  instrumentSelectScreen = new InstrumentSelectScreen(this);
         instrumentSelectScreen.create();
@@ -95,14 +88,13 @@ public class SequencerMain extends PApplet
         
         _currentScreen = tracksScreen;
         _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
-        
     }
 
     private void mapMidi(List<TrackModel> tracksModels)
     {
         
-            homeMapping(tracksModels);
-//            windowsMapping(tracksModels);
+//            homeMapping(tracksModels);
+            windowsMapping(tracksModels);
             System.out.println();
     }
  
@@ -120,7 +112,6 @@ public class SequencerMain extends PApplet
                 {
                     trackModel.setDeviceInfo(curDevice);
                     trackModel.setChannel(channel);
-                    trackModel.setInstrumentType(SequencerBar.MidiInstrumentType.SINGLE_CHANNEL_MULTIPLE_INSTRUMENTS);
                 }
                 System.out.print(" <---- SELECTED");
             }
@@ -150,7 +141,6 @@ public class SequencerMain extends PApplet
                 {
                     trackModel.setDeviceInfo(curDevice);
                     trackModel.setChannel(channel);
-                    trackModel.setInstrumentType(SequencerBar.MidiInstrumentType.SINGLE_CHANNEL_MULTIPLE_INSTRUMENTS);
                 }
                 System.out.print(" <---- SELECTED");
             }
@@ -187,11 +177,11 @@ public class SequencerMain extends PApplet
             {
                 case STOPPED:
                     _currentStep = 0;
-                    _sequencerBarsArea.sendStopped();
+                    _tracksModel.sendStopped();
                     _playStatus.hasStopped();
                     break;
                 case PLAYING:
-                    _sequencerBarsArea.sendAdvance(_currentStep);
+                    _tracksModel.sendAdvance(_currentStep);
                     _currentStep = _currentStep + 1;
                     if(_currentStep >= STEPS)
                     {
@@ -510,35 +500,19 @@ public class SequencerMain extends PApplet
     {
         private List<SequencerBar> _sequencerBars;
 
-        public SequencerBarArea(SequencerMain mainApp, Rectangle area, List<TrackModel> tracksModels)
+        public SequencerBarArea(SequencerMain mainApp, Rectangle area, TracksModel tracksModel)
         {
             PVector insets = new PVector(10, 5);
             _sequencerBars = new ArrayList<>();
+            List<TrackModel> tracksModels = tracksModel.getTrackModels();
             int trackHeight = (int)SequencerBar.computHeight(area.height, tracksModels.size(), insets.y);
             int cnt = 0;
             for (TrackModel trackModel : tracksModels)
             {
                 SequencerBar newTrac = 
-                        new SequencerBar(new PVector(area.x, area.y + cnt * trackHeight), insets, area.width, trackHeight, trackModel, cnt, mainApp);
+                        new SequencerBar(new PVector(area.x, area.y + cnt * trackHeight), insets, area.width, trackHeight, trackModel, mainApp);
                 _sequencerBars.add(newTrac);
                 cnt++;
-            }
-            draw(DrawType.NO_STEP_ADVANCE);
-        }
-
-        public void sendAdvance(int currentStep)
-        {
-            for(int trackCnt = 0; trackCnt < _tracksModels.size(); trackCnt++)
-            {
-                _sequencerBars.get(trackCnt).sendAdvance(currentStep);
-            }
-        }
-        
-        public void sendStopped()
-        {
-            for(int trackCnt = 0; trackCnt < _tracksModels.size(); trackCnt++)
-            {
-                _sequencerBars.get(trackCnt).sendStopped();
             }
         }
 
@@ -547,7 +521,7 @@ public class SequencerMain extends PApplet
         {
             if(type == DrawType.STEP_ADVANCE)
             {
-                for(int trackCnt = 0; trackCnt < _tracksModels.size(); trackCnt++)
+                for(int trackCnt = 0; trackCnt < NUM_TRACKS; trackCnt++)
                 {
                     _sequencerBars.get(trackCnt).draw(type);
                 }
@@ -556,7 +530,7 @@ public class SequencerMain extends PApplet
 
         public void mousePressed(MouseEvent event, InputState inputState)
         {
-            for(int trackCnt = 0; trackCnt < _tracksModels.size(); trackCnt++)
+            for(int trackCnt = 0; trackCnt < NUM_TRACKS; trackCnt++)
             {
                 _sequencerBars.get(trackCnt).mousePressed(event, inputState);
             }
@@ -565,13 +539,21 @@ public class SequencerMain extends PApplet
     
     public class TrackModel
     {
+        private static final int INACTIVE_SYMBOL = -1; //no note/instrument
+        private static final int MAX_EVENTS_AT_SAME_TIME = 10; //maximum amount of parallel midi events memorized by this object
+   
         private int _numberOfSteps;
         private int _stepsPerBeat;
         private MidiDevice _midiDevice;
         private int _channelNr;
         private int _note;
         private Info _midiDeviceInfo;
-        private SequencerBar.MidiInstrumentType _instrumentType;
+        private int _activeSubTrack;
+        private int _currentStep;
+        private int _curMaxStep;
+        private int[][] _activeSteps;
+
+        private boolean _isMuted;
 
         public TrackModel(int numSteps, int stepsPerBeat)
         {
@@ -579,9 +561,28 @@ public class SequencerMain extends PApplet
             _stepsPerBeat = stepsPerBeat;
         }
 
-        public void setInstrumentType(MidiInstrumentType instrumentType)
+        public void sendStopped()
         {
-            _instrumentType = instrumentType;
+            setCurrentStep(0);
+            try
+            {
+                sendNoteOff();
+            }
+            catch (InvalidMidiDataException exc)
+            {
+                exc.printStackTrace();
+            }
+            catch (MidiUnavailableException exc)
+            {
+                exc.printStackTrace();
+            }
+        }
+        
+        private void sendNoteOff() throws InvalidMidiDataException, MidiUnavailableException
+        {
+            ShortMessage offMsg = new ShortMessage();
+            offMsg.setMessage(ShortMessage.NOTE_ON, _channelNr, _note, 0);
+            _midiDevice.getReceiver().send(offMsg, -1);
         }
 
         public int getNumberOfSteps()
@@ -643,9 +644,176 @@ public class SequencerMain extends PApplet
             _note = note;
         }
 
-        public SequencerBar.MidiInstrumentType getInstrumentType()
+        public void setActiveSubTrack(int activeSubTrack)
         {
-            return _instrumentType;
+            _activeSubTrack = activeSubTrack;
+        }
+
+        public void setCurrentStep(int currentStep)
+        {
+            this._currentStep = currentStep;
+        }
+
+        public void setCurrentMaxSteps(int currentMaxSteps)
+        {
+            _curMaxStep = currentMaxSteps;
+        }
+
+        public void createTracks(int maxEventsAtSameTime, int steps)
+        {
+            _activeSteps = new int[maxEventsAtSameTime][steps];
+            for(int curNC = 0; curNC < maxEventsAtSameTime; curNC++)
+            {
+                for (int stepIdx = 0; stepIdx < _activeSteps[curNC].length; stepIdx++)
+                {
+                    _activeSteps[curNC][stepIdx] = INACTIVE_SYMBOL; //no note/instrument
+                }
+            }
+        }
+
+        public void initialize()
+        {
+            setActiveSubTrack(0);
+            setCurrentStep(0);
+            setCurrentMaxSteps(_numberOfSteps);
+            createTracks(MAX_EVENTS_AT_SAME_TIME, _numberOfSteps);
+        }
+
+        public boolean isCurrentStep(int stepIdx)
+        {
+            return stepIdx == getCurrentStep();
+        }
+
+        public int getCurrentStep()
+        {
+            return this._currentStep;
+        }
+
+        public boolean isCurrentStepActive()
+        {
+            return isStepActive(_currentStep);
+        }
+
+        public boolean isCurrentMaxStep(int step)
+        {
+            return step == _curMaxStep;
+        }
+
+        public boolean isFirstStepInBeat(int step)
+        {
+            return step % _stepsPerBeat == 0;
+        }
+
+        public int getCurrentMaxSteps()
+        {
+            return _curMaxStep;
+        }
+
+        public void toggleActivationState(int activatedButton)
+        {
+            if(_activeSteps[_activeSubTrack][activatedButton] == INACTIVE_SYMBOL)
+            {
+                _activeSteps[_activeSubTrack][activatedButton] = getNote();
+            }
+            else
+            {
+                _activeSteps[_activeSubTrack][activatedButton] = INACTIVE_SYMBOL;
+            }
+        }
+
+        public boolean isStepActive(int stepIdx)
+        {
+            return _activeSteps[_activeSubTrack][stepIdx] != INACTIVE_SYMBOL;
+        }
+
+        public void sendAdvance(int currentStep)
+        {
+            ShortMessage noteOffMsg = new ShortMessage();
+            try
+            {
+                noteOffMsg.setMessage(ShortMessage.NOTE_OFF, _channelNr, _note, 0);
+                _midiDevice.getReceiver().send(noteOffMsg, -1);
+            }
+            catch (MidiUnavailableException exc1)
+            {
+                exc1.printStackTrace();
+            }
+            catch (InvalidMidiDataException exc)
+            {
+                exc.printStackTrace();
+            }
+            if(!isCurrentStepActive() && !isMuted())
+            {
+                try
+                {
+                    ShortMessage midiMsg = new ShortMessage();
+                    midiMsg.setMessage(ShortMessage.NOTE_ON, _channelNr, _note, 120);
+                    _midiDevice.getReceiver().send(midiMsg, -1);
+                }
+                catch (InvalidMidiDataException exc)
+                {
+                    exc.printStackTrace();
+                }
+                catch (MidiUnavailableException exc)
+                {
+                    exc.printStackTrace();
+                }
+            }
+            _currentStep++;
+            if(_currentStep >= _curMaxStep)
+            {
+                _currentStep = 0;
+            }
+        }
+
+        public boolean isMuted()
+        {
+            return _isMuted;
+        }
+        
+        public void setMuteStatus(boolean status)
+        {
+            _isMuted = status;
+        }
+    }
+    
+    public class TracksModel
+    {
+        private List<TrackModel> _tracksModels;
+
+        public TracksModel(int numTracks, int steps, int stepsPerBeat)
+        {
+            _tracksModels = new ArrayList<TrackModel>();
+            for(int trackCnt = 0; trackCnt < numTracks; trackCnt++)
+            {
+                _tracksModels.add(new TrackModel(steps, stepsPerBeat));
+            }
+            mapMidi(_tracksModels);
+            for (TrackModel curTrackModel : _tracksModels)
+            {
+                curTrackModel.initialize();
+            }
+        }
+
+        public List<TrackModel> getTrackModels()
+        {
+            return _tracksModels;
+        }
+        
+        public void sendAdvance(int currentStep)
+        {
+            for(int trackCnt = 0; trackCnt < _tracksModels.size(); trackCnt++)
+            {
+                _tracksModels.get(trackCnt).sendAdvance(currentStep);
+            }
+        }
+        
+        public void sendStopped()
+        {
+            for(int trackCnt = 0; trackCnt < _tracksModels.size(); trackCnt++)
+            {
+                _tracksModels.get(trackCnt).sendStopped();
+            }
         }
     }
 
@@ -654,13 +822,13 @@ public class SequencerMain extends PApplet
         private List<ScreenElement> _elements;
         private SequencerMain _parent;
         private SequencerBarArea _sequencerBarsArea;
-        private List<TrackModel> _tracksModels;
+        private TracksModel _tracksModel;
         
-        public TracksScreen(SequencerMain parent, List<TrackModel> tracksModels)
+        public TracksScreen(SequencerMain parent, TracksModel tracksModel)
         {
             _elements = new ArrayList<>();
             _parent = parent;
-            this._tracksModels = tracksModels;
+            this._tracksModel = tracksModel;
         }
 
         public SequencerBarArea getSequencerArea()
@@ -678,7 +846,7 @@ public class SequencerMain extends PApplet
         @Override
         public void create()
         {
-            SequencerBarArea sequencerBarsArea = new SequencerBarArea(_parent, new Rectangle(100, 10, width - 120, height - 100), this._tracksModels);
+            SequencerBarArea sequencerBarsArea = new SequencerBarArea(_parent, new Rectangle(100, 10, width - 120, height - 100), this._tracksModel);
             this._sequencerBarsArea = sequencerBarsArea;
             PlayButton playButton = new PlayButton(_parent, new Rectangle(width/2, height - 90, 80, 50), _playStatus, _inputState);
             StopButton stopButton = new StopButton(_parent, new Rectangle(width/2 - 90, height - 90, 80, 50), _playStatus, _inputState);
