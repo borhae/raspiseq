@@ -12,7 +12,7 @@ import sequencer.SequencerMain.ScreenElement;
 import sequencer.SequencerMain.SeqButton;
 import sequencer.SequencerMain.TrackModel;
 
-public class SequencerBar implements ScreenElement
+public class StepSequencerBar implements ScreenElement
 {
     private PApplet _p;
     private PVector _insets;
@@ -31,25 +31,25 @@ public class SequencerBar implements ScreenElement
     private TrackModel _trackModel;
     private int _steps;
 
-    public SequencerBar(PVector corner, PVector insets, int areaWidth, int trackHeight, SequencerMain.TrackModel trackModel, SequencerMain processingApp)
+    public StepSequencerBar(Rectangle barArea, PVector insets, TrackModel trackModel, SequencerMain mainApp)
     {
         _trackModel = trackModel;
         _steps = trackModel.getNumberOfSteps();
 
-        _p = processingApp;
+        _p = mainApp;
         _insets = insets;
-        _width = areaWidth;
-        _corner = corner;
-        _buttonHeight = trackHeight  - 2 * _insets.y;
+        _width = barArea.width;
+        _corner = new PVector(barArea.x, barArea.y);
+        _buttonHeight = barArea.height  - 2 * _insets.y;
         _controlsWidth = 60;
         _buttonWidth = (_width - 2 * _insets.x - _controlsWidth )/trackModel.getNumberOfSteps();
         _inactiveColor = 255;
         _activeColor = 32;
         _beatColor = 128;
         int ctrlButtonHeight = (int)((_buttonHeight * 3)/8);
-        _muteButton = new MuteButton(processingApp, processingApp, new Rectangle((int)(_corner.x + insets.x), (int)(_corner.y + insets.y), 40, ctrlButtonHeight), null, null);
-        _instrumentSelectButton = new InstrumentSelectButton(processingApp, processingApp, new Rectangle((int)(_corner.x + insets.x), (int)(_corner.y + insets.y) + 40, 40, ctrlButtonHeight), null, null);
-        _inputState = processingApp.getInputState();
+        _muteButton = new MuteButton(mainApp, mainApp, new Rectangle((int)(_corner.x + insets.x), (int)(_corner.y + insets.y), 40, ctrlButtonHeight), null, null);
+        _instrumentSelectButton = new InstrumentSelectButton(mainApp, mainApp, new Rectangle((int)(_corner.x + insets.x), (int)(_corner.y + insets.y) + 40, 40, ctrlButtonHeight), null, null);
+        _inputState = mainApp.getInputState();
     }
 
     public float getHeight()

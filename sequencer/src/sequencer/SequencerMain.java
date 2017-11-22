@@ -24,6 +24,22 @@ import processing.event.MouseEvent;
 
 public class SequencerMain extends PApplet
 {
+    public class NoteLooperBar extends StepSequencerBar
+    {
+        public NoteLooperBar(Rectangle barArea, PVector insets, TrackModel trackModel, SequencerMain mainApp)
+        {
+            super(barArea, insets, trackModel, mainApp);
+        }
+    }
+
+    public class NoteLooperModel extends TrackModel
+    {
+        public NoteLooperModel(int steps, int stepsPerBeat)
+        {
+            super(steps, stepsPerBeat);
+        }
+    }
+
     private static final String INSTRUMENT_SELECT_SCREEN_ID = "instrumentSelect";
     private static final String TRACK_SCREEN_ID = "trackScreen";
     private static final int STEPS_PER_BEAT = 4;
@@ -498,20 +514,30 @@ public class SequencerMain extends PApplet
 
     public class SequencerBarArea implements ScreenElement
     {
-        private List<SequencerBar> _sequencerBars;
+        private List<StepSequencerBar> _sequencerBars;
 
         public SequencerBarArea(SequencerMain mainApp, Rectangle area, TracksModel tracksModel)
         {
             PVector insets = new PVector(10, 5);
             _sequencerBars = new ArrayList<>();
             List<TrackModel> tracksModels = tracksModel.getTrackModels();
-            int trackHeight = (int)SequencerBar.computHeight(area.height, tracksModels.size(), insets.y);
+            int trackHeight = (int)StepSequencerBar.computHeight(area.height, tracksModels.size(), insets.y);
             int cnt = 0;
             for (TrackModel trackModel : tracksModels)
             {
-                SequencerBar newTrac = 
-                        new SequencerBar(new PVector(area.x, area.y + cnt * trackHeight), insets, area.width, trackHeight, trackModel, mainApp);
-                _sequencerBars.add(newTrac);
+                StepSequencerBar newTrack = null;
+                Rectangle barArea = new Rectangle(area.x, area.y + cnt * trackHeight, area.width, trackHeight);
+                if(!(trackModel instanceof NoteLooperModel))
+                {
+                    newTrack = 
+                            new StepSequencerBar(barArea, insets, trackModel, mainApp);
+                } 
+                else
+                {
+                    newTrack = 
+                            new NoteLooperBar(barArea, insets, trackModel, mainApp);
+                }
+                _sequencerBars.add(newTrack);
                 cnt++;
             }
         }
@@ -539,19 +565,19 @@ public class SequencerMain extends PApplet
     
     public class TrackModel
     {
-        private static final int INACTIVE_SYMBOL = -1; //no note/instrument
-        private static final int MAX_EVENTS_AT_SAME_TIME = 10; //maximum amount of parallel midi events memorized by this object
+        protected static final int INACTIVE_SYMBOL = -1; //no note/instrument
+        protected static final int MAX_EVENTS_AT_SAME_TIME = 10; //maximum amount of parallel midi events memorized by this object
    
-        private int _numberOfSteps;
-        private int _stepsPerBeat;
-        private MidiDevice _midiDevice;
-        private int _channelNr;
+        protected int _numberOfSteps;
+        protected int _stepsPerBeat;
+        protected MidiDevice _midiDevice;
+        protected int _channelNr;
         private int _note;
-        private Info _midiDeviceInfo;
+        protected Info _midiDeviceInfo;
         private int _activeSubTrack;
-        private int _currentStep;
-        private int _curMaxStep;
-        private int[][] _activeSteps;
+        protected int _currentStep;
+        protected int _curMaxStep;
+        protected int[][] _activeSteps;
 
         private boolean _isMuted;
         private Stack<ShortMessage> _noteStack;
@@ -800,7 +826,17 @@ public class SequencerMain extends PApplet
             _tracksModels = new ArrayList<TrackModel>();
             for(int trackCnt = 0; trackCnt < numTracks; trackCnt++)
             {
-                _tracksModels.add(new TrackModel(steps, stepsPerBeat));
+                
+                TrackModel newModel = null;
+                if(trackCnt == numTracks - 1)
+                {
+                    newModel = new NoteLooperModel(steps, stepsPerBeat);
+                }
+                else
+                {
+                    newModel = new TrackModel(steps, stepsPerBeat);
+                }
+                _tracksModels.add(newModel);
             }
             mapMidi(_tracksModels);
             for (TrackModel curTrackModel : _tracksModels)
