@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Stack;
 
 import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.midi.MidiDevice;
@@ -92,7 +93,6 @@ public class SequencerMain extends PApplet
 
     private void mapMidi(List<TrackModel> tracksModels)
     {
-        
 //            homeMapping(tracksModels);
             windowsMapping(tracksModels);
             System.out.println();
@@ -554,11 +554,13 @@ public class SequencerMain extends PApplet
         private int[][] _activeSteps;
 
         private boolean _isMuted;
+        private Stack<ShortMessage> _noteStack;
 
         public TrackModel(int numSteps, int stepsPerBeat)
         {
             _numberOfSteps = numSteps;
             _stepsPerBeat = stepsPerBeat;
+            _noteStack = new Stack<>();
         }
 
         public void sendStopped()
@@ -566,7 +568,13 @@ public class SequencerMain extends PApplet
             setCurrentStep(0);
             try
             {
-                sendNoteOff();
+                // all notes off
+                for(int noteNr = 0; noteNr < 128; noteNr++)
+                {
+                    ShortMessage offMsg = new ShortMessage();
+                    offMsg.setMessage(ShortMessage.NOTE_OFF, _channelNr, noteNr, 0);
+                    _midiDevice.getReceiver().send(offMsg, -1);
+                }
             }
             catch (InvalidMidiDataException exc)
             {
@@ -578,13 +586,6 @@ public class SequencerMain extends PApplet
             }
         }
         
-        private void sendNoteOff() throws InvalidMidiDataException, MidiUnavailableException
-        {
-            ShortMessage offMsg = new ShortMessage();
-            offMsg.setMessage(ShortMessage.NOTE_ON, _channelNr, _note, 0);
-            _midiDevice.getReceiver().send(offMsg, -1);
-        }
-
         public int getNumberOfSteps()
         {
             return _numberOfSteps;
@@ -728,27 +729,15 @@ public class SequencerMain extends PApplet
 
         public void sendAdvance(int currentStep)
         {
-            ShortMessage noteOffMsg = new ShortMessage();
-            try
-            {
-                noteOffMsg.setMessage(ShortMessage.NOTE_OFF, _channelNr, _note, 0);
-                _midiDevice.getReceiver().send(noteOffMsg, -1);
-            }
-            catch (MidiUnavailableException exc1)
-            {
-                exc1.printStackTrace();
-            }
-            catch (InvalidMidiDataException exc)
-            {
-                exc.printStackTrace();
-            }
-            if(!isCurrentStepActive() && !isMuted())
+            killOldNotes();
+            if(isCurrentStepActive() && !isMuted())
             {
                 try
                 {
                     ShortMessage midiMsg = new ShortMessage();
                     midiMsg.setMessage(ShortMessage.NOTE_ON, _channelNr, _note, 120);
                     _midiDevice.getReceiver().send(midiMsg, -1);
+                    _noteStack.push(midiMsg);
                 }
                 catch (InvalidMidiDataException exc)
                 {
@@ -763,6 +752,31 @@ public class SequencerMain extends PApplet
             if(_currentStep >= _curMaxStep)
             {
                 _currentStep = 0;
+            }
+        }
+
+        private void killOldNotes()
+        {
+            try
+            {
+                while(!_noteStack.empty())
+                {
+                    ShortMessage oldMsg = _noteStack.pop();
+                    int oldChannel = oldMsg.getChannel();
+                    int oldNote = oldMsg.getData1();
+
+                    ShortMessage noteOffMsg = new ShortMessage();
+                    noteOffMsg.setMessage(ShortMessage.NOTE_OFF, oldChannel, oldNote, 0);
+                    _midiDevice.getReceiver().send(noteOffMsg, -1);
+                }
+            }
+            catch (MidiUnavailableException exc1)
+            {
+                exc1.printStackTrace();
+            }
+            catch (InvalidMidiDataException exc)
+            {
+                exc.printStackTrace();
             }
         }
 
