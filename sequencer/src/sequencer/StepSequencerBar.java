@@ -52,16 +52,6 @@ public class StepSequencerBar implements ScreenElement
         _inputState = mainApp.getInputState();
     }
 
-    public float getHeight()
-    {
-        return _buttonHeight + 2 * _insets.y;
-    }
-
-    public Rectangle getDimensions()
-    {
-        return new Rectangle((int)_corner.x, (int)_corner.y, (int)_width, (int)getHeight());
-    }
-
     @Override
     public void draw(DrawType type)
     {
@@ -120,7 +110,7 @@ public class StepSequencerBar implements ScreenElement
                 switch (_inputState.getState())
                 {
                     case REGULAR:
-                        activateNote(activatedButton);
+                        _trackModel.toggleActivationState(activatedButton);
                         break;
                     case STEP_LENGTH_SELECT_ENABLED:
                         setNewMaxSteps(inputState, activatedButton);
@@ -137,12 +127,6 @@ public class StepSequencerBar implements ScreenElement
     {
         _trackModel.setCurrentMaxSteps(activatedButton + 1);
         inputState.maxStepsSet();
-        System.out.println("max steps " + _trackModel.getCurrentMaxSteps());
-    }
-
-    private void activateNote(int activatedButton)
-    {
-        _trackModel.toggleActivationState(activatedButton);
     }
 
     private int getClickedButtonIdx(MouseEvent event)
@@ -162,11 +146,6 @@ public class StepSequencerBar implements ScreenElement
             }
         }
         return activatedButton;
-    }
-
-    public void setCurrentMaxSteps(int maxSteps)
-    {
-        _trackModel.setCurrentMaxSteps(maxSteps);
     }
 
     public class InstrumentSelectButton extends SeqButton
@@ -195,11 +174,6 @@ public class StepSequencerBar implements ScreenElement
         {
             sequencerMain.super(mainApp, area, playStatus, inputState);
             _trackModel.setMuteStatus(false);
-        }
-
-        public boolean isNotSet()
-        {
-            return !_trackModel.isMuted();
         }
 
         @Override
