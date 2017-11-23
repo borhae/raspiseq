@@ -17,6 +17,7 @@ import javax.sound.midi.Receiver;
 import javax.sound.midi.Sequence;
 import javax.sound.midi.Sequencer;
 import javax.sound.midi.ShortMessage;
+import javax.sound.midi.Track;
 import javax.sound.midi.Transmitter;
 
 import processing.core.PApplet;
@@ -38,16 +39,31 @@ public class SequencerMain extends PApplet
     {
         private Sequencer _sequenceRecorder;
         private Sequence _recordedSequence;
+        private MidiDevice _midiInDevice;
+        private PlayStatusType _loopingState;
 
         public NoteLooperModel(int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiInDevice)
         {
             super(steps, stepsPerBeat);
+            //not sure if i really need this
+            _loopingState = PlayStatusType.STOPPED;
             try
             {
                 _sequenceRecorder = MidiSystem.getSequencer();
                 _sequenceRecorder.setTempoInBPM(beatsPerMinute);
-                _recordedSequence = new Sequence(Sequence.PPQ, 1, 1);
+                if(!midiInDevice.isOpen())
+                {
+                    midiInDevice.open();
+                }
+                _midiInDevice = midiInDevice;
+                Transmitter recordingTransmitter = midiInDevice.getTransmitter();
+                Receiver sequencerReceiver = _sequenceRecorder.getReceiver();
+                recordingTransmitter.setReceiver(sequencerReceiver);
+                _recordedSequence = new Sequence(Sequence.PPQ, 24);
+                Track recordedTrack = _recordedSequence.createTrack();
                 _sequenceRecorder.setSequence(_recordedSequence);
+                _sequenceRecorder.setTickPosition(0);
+                _sequenceRecorder.recordEnable(recordedTrack, -1);
             }
             catch (MidiUnavailableException exc)
             {
@@ -62,19 +78,50 @@ public class SequencerMain extends PApplet
         @Override
         public void sendStopped()
         {
+            switch (_loopingState)
+            {
+                case RECORDING:
+                case PLAYING:
+                    _sequenceRecorder.stop();
+                    break;
+                default:
+                    break;
+            }
+            _loopingState = PlayStatusType.STOPPED;
             super.sendStopped();
-        }
-
-        @Override
-        public void sendAdvance(int currentStep)
-        {
-            super.sendAdvance(currentStep);
         }
 
         @Override
         public void sendRecording()
         {
-            
+            _loopingState = PlayStatusType.RECORDING;
+            Transmitter playbackTransmitter;
+            try
+            {
+                playbackTransmitter = _midiInDevice.getTransmitter();
+                Receiver instrumentReceiver = _midiDevice.getReceiver();
+                playbackTransmitter.setReceiver(instrumentReceiver);
+                _sequenceRecorder.startRecording();
+            }
+            catch (MidiUnavailableException exc)
+            {
+                exc.printStackTrace();
+            }
+        }
+
+        @Override
+        public void sendPaused()
+        {
+            _loopingState = PlayStatusType.PAUSED;
+            super.sendPaused();
+        }
+
+        @Override
+        public void sendPlaying()
+        {
+            _loopingState = PlayStatusType.PLAYING;
+            _sequenceRecorder.start();
+            super.sendPlaying();
         }
     }
 
@@ -841,7 +888,7 @@ public class SequencerMain extends PApplet
             }
         }
 
-        private void killOldNotes()
+        protected void killOldNotes()
         {
             try
             {
