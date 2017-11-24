@@ -15,20 +15,20 @@ import sequencer.SequencerMain.TrackModel;
 public class StepSequencerBar implements ScreenElement
 {
     private PApplet _p;
-    private PVector _insets;
-    private float _width;
-    private PVector _corner;
-    private float _buttonHeight;
+    protected PVector _insets;
+    protected float _width;
+    protected PVector _corner;
+    protected  float _buttonHeight;
     private float _buttonWidth;
     private int _inactiveColor;
     private int _activeColor;
     private int _beatColor;
     private float _controlsWidth;
-    private MuteButton _muteButton;
-    private InputState _inputState;
-    private InstrumentSelectButton _instrumentSelectButton;
+    protected MuteButton _muteButton;
+    protected InputState _inputState;
+    protected InstrumentSelectButton _instrumentSelectButton;
     
-    private TrackModel _trackModel;
+    protected TrackModel _trackModel;
     private int _steps;
 
     public StepSequencerBar(Rectangle barArea, PVector insets, TrackModel trackModel, SequencerMain mainApp)

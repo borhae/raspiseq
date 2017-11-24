@@ -27,11 +27,49 @@ import processing.event.MouseEvent;
 
 public class SequencerMain extends PApplet
 {
+    public class RecoredButton extends SeqButton
+    {
+        public RecoredButton(PApplet mainApp, Rectangle area, PlayStatus playStatus, InputState inputState)
+        {
+            super(mainApp, area, playStatus, inputState);
+        }
+
+        @Override
+        protected void buttonPressed(InputState inputState)
+        {
+            // TODO Auto-generated method stub
+        }
+
+        @Override
+        protected void setColor()
+        {
+            _mainApp.fill(200, 10, 10);
+        }
+    }
+
     public class NoteLooperBar extends StepSequencerBar
     {
+        private RecoredButton _recordButton;
+
         public NoteLooperBar(Rectangle barArea, PVector insets, TrackModel trackModel, SequencerMain mainApp)
         {
             super(barArea, insets, trackModel, mainApp);
+            _recordButton = new RecoredButton(mainApp, new Rectangle(barArea.x + 100, barArea.y + 10, 80, (int)_buttonHeight), null, null);
+        }
+
+        @Override
+        public void draw(DrawType type)
+        {
+            _muteButton.draw(type);
+            _instrumentSelectButton.draw(type);
+            _recordButton.draw(type);
+        }
+
+        @Override
+        public void mousePressed(MouseEvent event, InputState inputState)
+        {
+            _muteButton.mousePressed(event, inputState);
+            _instrumentSelectButton.mousePressed(event, inputState);
         }
     }
 
@@ -45,7 +83,7 @@ public class SequencerMain extends PApplet
         public NoteLooperModel(int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiInDevice)
         {
             super(steps, stepsPerBeat);
-            //not sure if i really need this
+            //not sure if i really need this, might be covered by Javas' sequencer already
             _loopingState = PlayStatusType.STOPPED;
             try
             {
@@ -64,6 +102,7 @@ public class SequencerMain extends PApplet
                 _sequenceRecorder.setSequence(_recordedSequence);
                 _sequenceRecorder.setTickPosition(0);
                 _sequenceRecorder.recordEnable(recordedTrack, -1);
+                _sequenceRecorder.open();
             }
             catch (MidiUnavailableException exc)
             {
@@ -240,7 +279,7 @@ public class SequencerMain extends PApplet
                     trackModel.setChannel(channel);
                 }
                 System.out.print(" <---- SELECTED");
-            }
+            }                                                                                                                           
             System.out.println();
             tracksModels.get(0).setNote(36);
             tracksModels.get(1).setNote(38);
