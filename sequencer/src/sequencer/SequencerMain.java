@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Stack;
 
 import javax.sound.midi.InvalidMidiDataException;
@@ -14,10 +15,7 @@ import javax.sound.midi.MidiMessage;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.MidiUnavailableException;
 import javax.sound.midi.Receiver;
-import javax.sound.midi.Sequence;
-import javax.sound.midi.Sequencer;
 import javax.sound.midi.ShortMessage;
-import javax.sound.midi.Track;
 import javax.sound.midi.Transmitter;
 
 import processing.core.PApplet;
@@ -27,23 +25,74 @@ import processing.event.MouseEvent;
 
 public class SequencerMain extends PApplet
 {
+    public class LooperReceiver implements Receiver
+    {
+        private NoteLooperModel _looperModel;
+
+        public LooperReceiver(NoteLooperModel noteLooperModel)
+        {
+            _looperModel = noteLooperModel;
+        }
+
+        @Override
+        public void send(MidiMessage message, long timeStamp)
+        {
+            if(_looperModel.isRecording() && (message instanceof ShortMessage))
+            {
+                ShortMessage sMessage = (ShortMessage)message;
+                System.out.print("Got message: " + midiMessageToString(sMessage));
+                if(sMessage.getData2() != 0)
+                {
+                    System.out.println("recording it!");
+                    _looperModel.recordNote(message);
+                }
+                else
+                {
+                    System.out.println("");
+                }
+            }
+        }
+
+        @Override
+        public void close()
+        {
+        }
+    }
+
     public class RecoredButton extends SeqButton
     {
-        public RecoredButton(PApplet mainApp, Rectangle area, PlayStatus playStatus, InputState inputState)
+        private NoteLooperModel _trackModel;
+
+        public RecoredButton(SequencerMain mainApp, Rectangle rectangle, TrackModel trackModel)
         {
-            super(mainApp, area, playStatus, inputState);
+            super(mainApp, rectangle, null, null);
+            _trackModel = (NoteLooperModel)trackModel;
         }
 
         @Override
         protected void buttonPressed(InputState inputState)
         {
-            // TODO Auto-generated method stub
+            if(!_trackModel.isRecording())
+            {
+                _trackModel.sendRecording();
+            }
+            else
+            {
+                _trackModel.sendStopRecording();
+            }
         }
 
         @Override
         protected void setColor()
         {
-            _mainApp.fill(200, 10, 10);
+            if(_trackModel.isRecording())
+            {
+                _mainApp.fill(255, 10, 10);
+            }
+            else
+            {
+                _mainApp.fill(200, 10, 10);
+            }
         }
     }
 
@@ -54,7 +103,7 @@ public class SequencerMain extends PApplet
         public NoteLooperBar(Rectangle barArea, PVector insets, TrackModel trackModel, SequencerMain mainApp)
         {
             super(barArea, insets, trackModel, mainApp);
-            _recordButton = new RecoredButton(mainApp, new Rectangle(barArea.x + 100, barArea.y + 10, 80, (int)_buttonHeight), null, null);
+            _recordButton = new RecoredButton(mainApp, new Rectangle(barArea.x + 100, barArea.y + 10, 80, (int)_buttonHeight), trackModel);
         }
 
         @Override
@@ -70,48 +119,42 @@ public class SequencerMain extends PApplet
         {
             _muteButton.mousePressed(event, inputState);
             _instrumentSelectButton.mousePressed(event, inputState);
+            _recordButton.mousePressed(event, inputState);
         }
     }
 
     public class NoteLooperModel extends TrackModel
     {
-        private Sequencer _sequenceRecorder;
-        private Sequence _recordedSequence;
-        private MidiDevice _midiInDevice;
         private PlayStatusType _loopingState;
 
         public NoteLooperModel(int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiInDevice)
         {
-            super(steps, stepsPerBeat);
-            //not sure if i really need this, might be covered by Javas' sequencer already
+            super(steps, stepsPerBeat, midiInDevice);
             _loopingState = PlayStatusType.STOPPED;
             try
             {
-                _sequenceRecorder = MidiSystem.getSequencer();
-                _sequenceRecorder.setTempoInBPM(beatsPerMinute);
                 if(!midiInDevice.isOpen())
                 {
                     midiInDevice.open();
                 }
-                _midiInDevice = midiInDevice;
                 Transmitter recordingTransmitter = midiInDevice.getTransmitter();
-                Receiver sequencerReceiver = _sequenceRecorder.getReceiver();
-                recordingTransmitter.setReceiver(sequencerReceiver);
-                _recordedSequence = new Sequence(Sequence.PPQ, 24);
-                Track recordedTrack = _recordedSequence.createTrack();
-                _sequenceRecorder.setSequence(_recordedSequence);
-                _sequenceRecorder.setTickPosition(0);
-                _sequenceRecorder.recordEnable(recordedTrack, -1);
-                _sequenceRecorder.open();
+                Receiver loopReceiver = new LooperReceiver(this);
+                recordingTransmitter.setReceiver(loopReceiver);
             }
             catch (MidiUnavailableException exc)
             {
                 exc.printStackTrace();
             }
-            catch (InvalidMidiDataException exc)
-            {
-                exc.printStackTrace();
-            }
+        }
+
+        public void recordNote(MidiMessage message)
+        {
+            _activeSteps[_activeSubTrack][_currentStep] = ((ShortMessage)message).getData1();
+        }
+
+        public boolean isRecording()
+        {
+            return _loopingState == PlayStatusType.RECORDING;
         }
 
         @Override
@@ -121,7 +164,6 @@ public class SequencerMain extends PApplet
             {
                 case RECORDING:
                 case PLAYING:
-                    _sequenceRecorder.stop();
                     break;
                 default:
                     break;
@@ -134,18 +176,13 @@ public class SequencerMain extends PApplet
         public void sendRecording()
         {
             _loopingState = PlayStatusType.RECORDING;
-            Transmitter playbackTransmitter;
-            try
-            {
-                playbackTransmitter = _midiInDevice.getTransmitter();
-                Receiver instrumentReceiver = _midiDevice.getReceiver();
-                playbackTransmitter.setReceiver(instrumentReceiver);
-                _sequenceRecorder.startRecording();
-            }
-            catch (MidiUnavailableException exc)
-            {
-                exc.printStackTrace();
-            }
+        }
+
+        @Override
+        public void sendStopRecording()
+        {
+            _loopingState = PlayStatusType.PLAYING;
+            super.sendStopRecording();
         }
 
         @Override
@@ -155,11 +192,13 @@ public class SequencerMain extends PApplet
             super.sendPaused();
         }
 
-        @Override
+        @Override 
         public void sendPlaying()
         {
-            _loopingState = PlayStatusType.PLAYING;
-            _sequenceRecorder.start();
+            if(_loopingState != PlayStatusType.RECORDING)
+            {
+                _loopingState = PlayStatusType.PLAYING;
+            }
             super.sendPlaying();
         }
     }
@@ -232,7 +271,7 @@ public class SequencerMain extends PApplet
         TracksScreen tracksScreen = new TracksScreen(this, _tracksModel);
         tracksScreen.create();
 
-        InstrumentSelectScreen  instrumentSelectScreen = new InstrumentSelectScreen(this, midiInDevice, _inputState);
+        InstrumentSelectScreen  instrumentSelectScreen = new InstrumentSelectScreen(this, _inputState);
         instrumentSelectScreen.create();
         
         _screens.put(TRACK_SCREEN_ID, tracksScreen);
@@ -240,6 +279,11 @@ public class SequencerMain extends PApplet
         
         _currentScreen = tracksScreen;
         _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
+    }
+
+    public static String midiMessageToString(ShortMessage sMessage)
+    {
+        return "Channel: " + sMessage.getChannel() + ", Command: " + sMessage.getCommand() + ", Data1: " + sMessage.getData1() + ", Data2: " + sMessage.getData2() + ", Length: " + sMessage.getLength() + ", Status: " + sMessage.getStatus();
     }
 
     private MidiDevice createMidiInDevice() throws MidiUnavailableException
@@ -445,31 +489,12 @@ public class SequencerMain extends PApplet
             }
         }
 
-        public void instrumentSelectedPressed()
+        public void instrumentSelected()
         {
             if(_state == InputStateType.INSTRUMENT_SELECT_ACTIVE)
             {
                 _state = InputStateType.REGULAR;
-                background(255);
-                _currentScreen = _screens.get(TRACK_SCREEN_ID);
-            }
-        }
-
-        public void channelSelectPressed()
-        {
-            if(_state == InputStateType.INSTRUMENT_SELECT_ACTIVE)
-            {
-                _state = InputStateType.REGULAR;
-                background(255);
-                _currentScreen = _screens.get(TRACK_SCREEN_ID);
-            }
-        }
-
-        public void noteSelected()
-        {
-            if(_state == InputStateType.INSTRUMENT_SELECT_ACTIVE)
-            {
-                _state = InputStateType.REGULAR;
+                _intstrumentSelectingTrack.closeNoteSelector();
                 background(255);
                 _currentScreen = _screens.get(TRACK_SCREEN_ID);
             }
@@ -547,6 +572,12 @@ public class SequencerMain extends PApplet
         public void setActiveTrack(TrackModel instrumentSelectingTrack)
         {
             _trackModel = instrumentSelectingTrack;
+        }
+
+        @Override
+        protected void buttonPressed(InputState inputState)
+        {
+            
         }
     }
 
@@ -735,19 +766,23 @@ public class SequencerMain extends PApplet
         protected int _channelNr;
         private int _note;
         protected Info _midiDeviceInfo;
-        private int _activeSubTrack;
+        protected int _activeSubTrack;
         protected int _currentStep;
         protected int _curMaxStep;
         protected int[][] _activeSteps;
+        protected MidiDevice _midiInDevice;
 
         private boolean _isMuted;
         private Stack<ShortMessage> _noteStack;
+        private NoteSelectMidiReceiver _midiReceiver;
+        private Transmitter _instrumentSelectTransmitter;
 
-        public TrackModel(int numSteps, int stepsPerBeat)
+        public TrackModel(int numSteps, int stepsPerBeat, MidiDevice midiInDevice)
         {
             _numberOfSteps = numSteps;
             _stepsPerBeat = stepsPerBeat;
             _noteStack = new Stack<>();
+            _midiInDevice = midiInDevice;
         }
 
         public void sendStopped()
@@ -907,7 +942,7 @@ public class SequencerMain extends PApplet
                 try
                 {
                     ShortMessage midiMsg = new ShortMessage();
-                    midiMsg.setMessage(ShortMessage.NOTE_ON, _channelNr, _note, 120);
+                    midiMsg.setMessage(ShortMessage.NOTE_ON, _channelNr, _activeSteps[_activeSubTrack][_currentStep], 120);
                     _midiDevice.getReceiver().send(midiMsg, -1);
                     _noteStack.push(midiMsg);
                 }
@@ -966,12 +1001,43 @@ public class SequencerMain extends PApplet
         {
         }
 
+        public void sendStopRecording()
+        {
+        }
+
         public void sendPaused()
         {
         }
 
         public void sendPlaying()
         {
+        }
+
+        public void openMidiInDevice()
+        {
+            try
+            {
+                if(!_midiDevice.isOpen())
+                {
+                    _midiInDevice.open();
+                }
+                _instrumentSelectTransmitter = _midiInDevice.getTransmitter();
+                if(_midiReceiver == null)
+                {
+                    _midiReceiver = new NoteSelectMidiReceiver();
+                }
+                _midiReceiver.setInstrumentSelectingTrack(this);
+                _instrumentSelectTransmitter.setReceiver(_midiReceiver);
+            }
+            catch (MidiUnavailableException exc)
+            {
+                exc.printStackTrace();
+            }
+        }
+
+        public void closeNoteSelector()
+        {
+            _instrumentSelectTransmitter.close();
         }
     }
     
@@ -994,7 +1060,7 @@ public class SequencerMain extends PApplet
                 }
                 else
                 {
-                    newModel = new TrackModel(steps, stepsPerBeat);
+                    newModel = new TrackModel(steps, stepsPerBeat, _midiInDevice);
                 }
                 _tracksModels.add(newModel);
             }
@@ -1116,6 +1182,32 @@ public class SequencerMain extends PApplet
         }
     }
     
+    public class NoteSelectMidiReceiver implements Receiver
+    {
+        private TrackModel _instrumentSelectingTrack;
+
+        @Override
+        public void send(MidiMessage message, long timeStamp)
+        {
+            if(message instanceof ShortMessage)
+            {
+                ShortMessage sMessage = (ShortMessage)message;
+                System.out.println("timestamp: " + timeStamp + " Message: " + midiMessageToString(sMessage));
+                _instrumentSelectingTrack.setNote(sMessage.getData1());
+            }
+        }
+
+        @Override
+        public void close()
+        {
+        }
+
+        public void setInstrumentSelectingTrack(TrackModel intstrumentSelectingTrack)
+        {
+            _instrumentSelectingTrack = intstrumentSelectingTrack;
+        }
+    }
+
     public class InstrumentSelectScreen implements Screen
     {
         private List<Info> _devices;
@@ -1124,7 +1216,7 @@ public class SequencerMain extends PApplet
         private TrackModel _instrumentSelectingTrack;
         private InputState _inputState;
 
-        public InstrumentSelectScreen(SequencerMain sequencerMain, MidiDevice midiInDevice, InputState inputState)
+        public InstrumentSelectScreen(SequencerMain sequencerMain, InputState inputState)
         {
             _mainApp = sequencerMain;
             MidiDevice.Info[] deviceInfos = MidiSystem.getMidiDeviceInfo();
@@ -1134,48 +1226,12 @@ public class SequencerMain extends PApplet
                 _devices.add(curDevice);
             }
             _elements = new ArrayList<>();
-            try
-            {
-                midiInDevice.open();
-                Transmitter instrumentSelectTransmitter = midiInDevice.getTransmitter();
-                instrumentSelectTransmitter.setReceiver(new Receiver() {
-                    @Override
-                    public void send(MidiMessage message, long timeStamp)
-                    {
-                        if(message instanceof ShortMessage)
-                        {
-                            ShortMessage sMessage = (ShortMessage)message;
-                            System.out.println("timestamp: " + timeStamp + " Message: " + midiMessageToString(sMessage));
-                            if((inputState.getState() == InputStateType.INSTRUMENT_SELECT_ACTIVE) && (_instrumentSelectingTrack != null))
-                            {
-                                if(sMessage.getCommand() == ShortMessage.NOTE_ON && sMessage.getData2() != 0)
-                                {
-                                    _instrumentSelectingTrack.setNote(sMessage.getData1());
-                                }
-                            }
-                        }
-                    }
-                    
-                    private String midiMessageToString(ShortMessage sMessage)
-                    {
-                        return "Channel: " + sMessage.getChannel() + ", Command: " + sMessage.getCommand() + ", Data1: " + sMessage.getData1() + ", Data2: " + sMessage.getData2() + ", Length: " + sMessage.getLength() + ", Status: " + sMessage.getStatus();
-                    }
-
-                    @Override
-                    public void close()
-                    {
-                    }
-                });
-            }
-            catch (MidiUnavailableException exc)
-            {
-                exc.printStackTrace();
-            }
         }
         
         public void setSelectingTrack(TrackModel intstrumentSelectingTrack)
         {
             _instrumentSelectingTrack = intstrumentSelectingTrack;
+            _instrumentSelectingTrack.openMidiInDevice();
         }
 
         @Override
@@ -1200,6 +1256,33 @@ public class SequencerMain extends PApplet
             int yNotePos = 20;
             _elements.add(new MidiReceiveLabel(_mainApp, xNotePos, yNotePos, _instrumentSelectingTrack));
             
+            int xStartPos = 600;
+            int yStartPos = 60;
+            createPresetNoteSelectButtons(_mainApp, xStartPos, yStartPos, _instrumentSelectingTrack);
+        }
+
+        private void createPresetNoteSelectButtons(SequencerMain mainApp, int xStartPos, int yStartPos, TrackModel instrumentSelectingTrack)
+        {
+            Map<Integer, String> noteInstrumentMapping = new HashMap<>();
+            noteInstrumentMapping.put(36, "Kick");
+            noteInstrumentMapping.put(38, "Snare");
+            noteInstrumentMapping.put(50, "Lo Tom");
+            noteInstrumentMapping.put(42, "Hi Tom");
+            noteInstrumentMapping.put(42, "Cl Hat");
+            noteInstrumentMapping.put(46, "Op Hat");
+            noteInstrumentMapping.put(39, "Clap");
+            noteInstrumentMapping.put(75, "Claves");
+            noteInstrumentMapping.put(67, "Agogo");
+            noteInstrumentMapping.put(49, "Crash");
+            
+            int xPos = xStartPos;
+            int yPos = yStartPos;
+            Set<Integer> noteSet = noteInstrumentMapping.keySet();
+            for (Integer curNote : noteSet)
+            {
+                _elements.add(new NoteSelectButton(mainApp, xPos, yPos, curNote, noteInstrumentMapping.get(curNote), _instrumentSelectingTrack));
+                yPos += 30;
+            }
         }
 
         @Override
@@ -1246,7 +1329,7 @@ public class SequencerMain extends PApplet
         protected void buttonPressed(InputState inputState)
         {
             _trackModel.setDeviceInfo(_deviceInfo);
-            inputState.instrumentSelectedPressed();
+            inputState.instrumentSelected();
         }
 
         @Override
@@ -1289,7 +1372,7 @@ public class SequencerMain extends PApplet
         protected void buttonPressed(InputState inputState)
         {
             _trackModel.setChannel(_channelNr);
-            inputState.channelSelectPressed();
+            inputState.instrumentSelected();
         }
 
         @Override
@@ -1337,14 +1420,9 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void mousePressed(MouseEvent event, InputState inputState)
-        {
-            inputState.noteSelected();
-        }
-
-        @Override
         protected void buttonPressed(InputState inputState)
         {
+            inputState.instrumentSelected();
         }
 
         @Override
@@ -1352,9 +1430,46 @@ public class SequencerMain extends PApplet
         {
             fill(255, 128, 255);
         }
-
     }
 
+    public class NoteSelectButton extends InstrumentSelectButton
+    {
+        private int _note;
+        private String _instrumentName;
+
+        public NoteSelectButton(SequencerMain mainApp, int xPos, int yPos, int note, String instrumentName, TrackModel instrumentSelectingTrack)
+        {
+            super(mainApp, new Rectangle(xPos, yPos, 100, 25), null, null, instrumentSelectingTrack);
+            _note = note;
+            _instrumentName = instrumentName;
+        }
+
+        @Override
+        protected void buttonPressed(InputState inputState)
+        {
+            _trackModel.setNote(_note);
+            inputState.instrumentSelected();
+        }
+
+        @Override
+        public void draw(DrawType type)
+        {
+            super.draw(type);
+            textFont(_instrumentSelectFont);
+            textAlign(LEFT);
+            int previousColor = getGraphics().fillColor;
+            fill(0);
+            text(_note + ": " + _instrumentName, _area.x + 10, _area.y + 18);
+            fill(previousColor);
+        }
+
+        @Override
+        protected void setColor()
+        {
+            fill(0, 128, 255);
+        }
+    }
+    
     public interface Screen
     {
         void add(ScreenElement element);
