@@ -147,6 +147,12 @@ public class SequencerMain extends PApplet
             }
         }
 
+        @Override
+        public void rewriteNote()
+        {
+            //we don't react to a note change because we record notes by keyboard
+        }
+
         public void recordNote(MidiMessage message)
         {
             _activeSteps[_activeSubTrack][_currentStep] = ((ShortMessage)message).getData1();
@@ -495,6 +501,7 @@ public class SequencerMain extends PApplet
             {
                 _state = InputStateType.REGULAR;
                 _intstrumentSelectingTrack.closeNoteSelector();
+                _intstrumentSelectingTrack.rewriteNote();
                 background(255);
                 _currentScreen = _screens.get(TRACK_SCREEN_ID);
             }
@@ -783,6 +790,20 @@ public class SequencerMain extends PApplet
             _stepsPerBeat = stepsPerBeat;
             _noteStack = new Stack<>();
             _midiInDevice = midiInDevice;
+        }
+
+        public void rewriteNote()
+        {
+            for (int subTrackIdx = 0; subTrackIdx < _activeSteps.length; subTrackIdx++)
+            {
+                for (int stepIdx = 0; stepIdx < _activeSteps[subTrackIdx].length; stepIdx++)
+                {
+                    if(_activeSteps[subTrackIdx][stepIdx] != INACTIVE_SYMBOL)
+                    {
+                        _activeSteps[subTrackIdx][stepIdx] = _note;
+                    }
+                }
+            }
         }
 
         public void sendStopped()
