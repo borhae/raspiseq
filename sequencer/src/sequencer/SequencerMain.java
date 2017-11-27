@@ -22,193 +22,10 @@ import processing.core.PApplet;
 import processing.core.PFont;
 import processing.core.PVector;
 import processing.event.MouseEvent;
+import sequencer.SequencerMain.DrawType;
 
 public class SequencerMain extends PApplet
 {
-    public class LooperReceiver implements Receiver
-    {
-        private NoteLooperModel _looperModel;
-
-        public LooperReceiver(NoteLooperModel noteLooperModel)
-        {
-            _looperModel = noteLooperModel;
-        }
-
-        @Override
-        public void send(MidiMessage message, long timeStamp)
-        {
-            if(_looperModel.isRecording() && (message instanceof ShortMessage))
-            {
-                ShortMessage sMessage = (ShortMessage)message;
-                System.out.print("Got message: " + midiMessageToString(sMessage));
-                if(sMessage.getData2() != 0)
-                {
-                    System.out.println("recording it!");
-                    _looperModel.recordNote(message);
-                }
-                else
-                {
-                    System.out.println("");
-                }
-            }
-        }
-
-        @Override
-        public void close()
-        {
-        }
-    }
-
-    public class RecoredButton extends SeqButton
-    {
-        private NoteLooperModel _trackModel;
-
-        public RecoredButton(SequencerMain mainApp, Rectangle rectangle, TrackModel trackModel)
-        {
-            super(mainApp, rectangle, null, null);
-            _trackModel = (NoteLooperModel)trackModel;
-        }
-
-        @Override
-        protected void buttonPressed(InputState inputState)
-        {
-            if(!_trackModel.isRecording())
-            {
-                _trackModel.sendRecording();
-            }
-            else
-            {
-                _trackModel.sendStopRecording();
-            }
-        }
-
-        @Override
-        protected void setColor()
-        {
-            if(_trackModel.isRecording())
-            {
-                _mainApp.fill(255, 10, 10);
-            }
-            else
-            {
-                _mainApp.fill(200, 10, 10);
-            }
-        }
-    }
-
-    public class NoteLooperBar extends StepSequencerBar
-    {
-        private RecoredButton _recordButton;
-
-        public NoteLooperBar(Rectangle barArea, PVector insets, TrackModel trackModel, SequencerMain mainApp)
-        {
-            super(barArea, insets, trackModel, mainApp);
-            _recordButton = new RecoredButton(mainApp, new Rectangle(barArea.x + 100, barArea.y + 10, 80, (int)_buttonHeight), trackModel);
-        }
-
-        @Override
-        public void draw(DrawType type)
-        {
-            _muteButton.draw(type);
-            _instrumentSelectButton.draw(type);
-            _recordButton.draw(type);
-        }
-
-        @Override
-        public void mousePressed(MouseEvent event, InputState inputState)
-        {
-            _muteButton.mousePressed(event, inputState);
-            _instrumentSelectButton.mousePressed(event, inputState);
-            _recordButton.mousePressed(event, inputState);
-        }
-    }
-
-    public class NoteLooperModel extends TrackModel
-    {
-        private PlayStatusType _loopingState;
-
-        public NoteLooperModel(int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiInDevice)
-        {
-            super(steps, stepsPerBeat, midiInDevice);
-            _loopingState = PlayStatusType.STOPPED;
-            try
-            {
-                if(!midiInDevice.isOpen())
-                {
-                    midiInDevice.open();
-                }
-                Transmitter recordingTransmitter = midiInDevice.getTransmitter();
-                Receiver loopReceiver = new LooperReceiver(this);
-                recordingTransmitter.setReceiver(loopReceiver);
-            }
-            catch (MidiUnavailableException exc)
-            {
-                exc.printStackTrace();
-            }
-        }
-
-        @Override
-        public void rewriteNote()
-        {
-            //we don't react to a note change because we record notes by keyboard
-        }
-
-        public void recordNote(MidiMessage message)
-        {
-            _activeSteps[_activeSubTrack][_currentStep] = ((ShortMessage)message).getData1();
-        }
-
-        public boolean isRecording()
-        {
-            return _loopingState == PlayStatusType.RECORDING;
-        }
-
-        @Override
-        public void sendStopped()
-        {
-            switch (_loopingState)
-            {
-                case RECORDING:
-                case PLAYING:
-                    break;
-                default:
-                    break;
-            }
-            _loopingState = PlayStatusType.STOPPED;
-            super.sendStopped();
-        }
-
-        @Override
-        public void sendRecording()
-        {
-            _loopingState = PlayStatusType.RECORDING;
-        }
-
-        @Override
-        public void sendStopRecording()
-        {
-            _loopingState = PlayStatusType.PLAYING;
-            super.sendStopRecording();
-        }
-
-        @Override
-        public void sendPaused()
-        {
-            _loopingState = PlayStatusType.PAUSED;
-            super.sendPaused();
-        }
-
-        @Override 
-        public void sendPlaying()
-        {
-            if(_loopingState != PlayStatusType.RECORDING)
-            {
-                _loopingState = PlayStatusType.PLAYING;
-            }
-            super.sendPlaying();
-        }
-    }
-
     private static final String INSTRUMENT_SELECT_SCREEN_ID = "instrumentSelect";
     private static final String TRACK_SCREEN_ID = "trackScreen";
     private static final int STEPS_PER_BEAT = 4;
@@ -308,8 +125,8 @@ public class SequencerMain extends PApplet
 
     private void mapMidi(List<TrackModel> tracksModels)
     {
-//            homeMapping(tracksModels);
-            windowsMapping(tracksModels);
+            homeMapping(tracksModels);
+//            windowsMapping(tracksModels);
             System.out.println();
     }
  
@@ -345,7 +162,7 @@ public class SequencerMain extends PApplet
     private void homeMapping(List<TrackModel> tracksModels)
     {
         MidiDevice.Info[] deviceInfos = MidiSystem.getMidiDeviceInfo();
-        int channel = 10;
+        int channel = 0;
         for (Info curDevice : deviceInfos)
         {
             System.out.print("Name: " + curDevice.getName());
@@ -1491,6 +1308,212 @@ public class SequencerMain extends PApplet
         }
     }
     
+    public class LooperReceiver implements Receiver
+    {
+        private NoteLooperModel _looperModel;
+
+        public LooperReceiver(NoteLooperModel noteLooperModel)
+        {
+            _looperModel = noteLooperModel;
+        }
+
+        @Override
+        public void send(MidiMessage message, long timeStamp)
+        {
+            if(_looperModel.isRecording() && (message instanceof ShortMessage))
+            {
+                ShortMessage sMessage = (ShortMessage)message;
+                System.out.print("Got message: " + midiMessageToString(sMessage));
+                if(sMessage.getData2() != 0)
+                {
+                    System.out.println("recording it!");
+                    _looperModel.recordNote(message);
+                }
+                else
+                {
+                    System.out.println("");
+                }
+            }
+        }
+
+        @Override
+        public void close()
+        {
+        }
+    }
+
+    public class RecoredButton extends SeqButton
+    {
+        private NoteLooperModel _trackModel;
+
+        public RecoredButton(SequencerMain mainApp, Rectangle rectangle, TrackModel trackModel)
+        {
+            super(mainApp, rectangle, null, null);
+            _trackModel = (NoteLooperModel)trackModel;
+        }
+
+        @Override
+        protected void buttonPressed(InputState inputState)
+        {
+            if(!_trackModel.isRecording())
+            {
+                _trackModel.sendRecording();
+            }
+            else
+            {
+                _trackModel.sendStopRecording();
+            }
+        }
+
+        @Override
+        public void draw(DrawType type)
+        {
+            super.draw(type);
+            int prevCol = _mainApp.getGraphics().fillColor;
+            boolean prevStroke = _mainApp.getGraphics().stroke;
+            int prevStrokeCol = _mainApp.getGraphics().strokeColor;
+            _mainApp.noStroke();
+            _mainApp.fill(0, 0, 0);
+            _mainApp.ellipse(_area.x + ((int)_area.width/2) + 1, _area.y + ((int)_area.height/2)  + 1, _area.width/3 - 1, _area.height/3);
+            _mainApp.fill(prevCol);
+            if(prevStroke)
+            {
+                _mainApp.stroke(prevStrokeCol);
+            }
+            else
+            {
+                _mainApp.noStroke();
+            }
+        }
+
+        @Override
+        protected void setColor()
+        {
+            if(_trackModel.isRecording())
+            {
+                _mainApp.fill(255, 10, 10);
+            }
+            else
+            {
+                _mainApp.fill(200, 10, 10);
+            }
+        }
+    }
+
+    public class NoteLooperBar extends StepSequencerBar
+    {
+        private RecoredButton _recordButton;
+
+        public NoteLooperBar(Rectangle barArea, PVector insets, TrackModel trackModel, SequencerMain mainApp)
+        {
+            super(barArea, insets, trackModel, mainApp);
+            _recordButton = new RecoredButton(mainApp, new Rectangle(barArea.x - 35, barArea.y + 5, 35, (int)(_buttonHeight / 2)), trackModel);
+        }
+
+        @Override
+        public void draw(DrawType type)
+        {
+            super.draw(type);
+            _muteButton.draw(type);
+            _instrumentSelectButton.draw(type);
+            _recordButton.draw(type);
+        }
+
+        @Override
+        public void mousePressed(MouseEvent event, InputState inputState)
+        {
+            super.mousePressed(event, inputState);
+            _instrumentSelectButton.mousePressed(event, inputState);
+            _recordButton.mousePressed(event, inputState);
+        }
+    }
+
+    public class NoteLooperModel extends TrackModel
+    {
+        private PlayStatusType _loopingState;
+
+        public NoteLooperModel(int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiInDevice)
+        {
+            super(steps, stepsPerBeat, midiInDevice);
+            _loopingState = PlayStatusType.STOPPED;
+            try
+            {
+                if(!midiInDevice.isOpen())
+                {
+                    midiInDevice.open();
+                }
+                Transmitter recordingTransmitter = midiInDevice.getTransmitter();
+                Receiver loopReceiver = new LooperReceiver(this);
+                recordingTransmitter.setReceiver(loopReceiver);
+            }
+            catch (MidiUnavailableException exc)
+            {
+                exc.printStackTrace();
+            }
+        }
+
+        @Override
+        public void rewriteNote()
+        {
+            //we don't react to a note change because we record notes by keyboard
+        }
+
+        public void recordNote(MidiMessage message)
+        {
+            _activeSteps[_activeSubTrack][_currentStep] = ((ShortMessage)message).getData1();
+        }
+
+        public boolean isRecording()
+        {
+            return _loopingState == PlayStatusType.RECORDING;
+        }
+
+        @Override
+        public void sendStopped()
+        {
+            switch (_loopingState)
+            {
+                case RECORDING:
+                case PLAYING:
+                    break;
+                default:
+                    break;
+            }
+            _loopingState = PlayStatusType.STOPPED;
+            super.sendStopped();
+        }
+
+        @Override
+        public void sendRecording()
+        {
+            _loopingState = PlayStatusType.RECORDING;
+        }
+
+        @Override
+        public void sendStopRecording()
+        {
+            _loopingState = PlayStatusType.PLAYING;
+            super.sendStopRecording();
+        }
+
+        @Override
+        public void sendPaused()
+        {
+            _loopingState = PlayStatusType.PAUSED;
+            super.sendPaused();
+        }
+
+        @Override 
+        public void sendPlaying()
+        {
+            if(_loopingState != PlayStatusType.RECORDING)
+            {
+                _loopingState = PlayStatusType.PLAYING;
+            }
+            super.sendPlaying();
+        }
+    }
+
     public interface Screen
     {
         void add(ScreenElement element);
