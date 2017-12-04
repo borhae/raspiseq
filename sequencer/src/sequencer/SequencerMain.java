@@ -22,10 +22,10 @@ import processing.core.PApplet;
 import processing.core.PFont;
 import processing.core.PVector;
 import processing.event.MouseEvent;
-import sequencer.SequencerMain.DrawType;
 
 public class SequencerMain extends PApplet
 {
+    private static final int ARPEGGIATOR_DIVISION = 4;
     private static final String INSTRUMENT_SELECT_SCREEN_ID = "instrumentSelect";
     private static final String TRACK_SCREEN_ID = "trackScreen";
     private static final int STEPS_PER_BEAT = 4;
@@ -33,6 +33,7 @@ public class SequencerMain extends PApplet
     private static final int NUM_TRACKS = 8;
     
     private long _stepTimer;
+    private long _arpeggioTimer;
     private long _drawTimer;
     private long _passedTime;
     private int _beatsPerMinute;
@@ -63,11 +64,14 @@ public class SequencerMain extends PApplet
     public void setup()
     {
         _stepTimer = 0;
+        _arpeggioTimer = 0;
         _passedTime = 0;
-        _beatsPerMinute = 140;
+        _beatsPerMinute = 160;
         _oldTime = 0;
         _currentStep = 0;
         _millisToPass = 60000 / (_beatsPerMinute * STEPS_PER_BEAT);
+        System.out.println("millis per step: " + _millisToPass);
+        System.out.println("millis per arp: " + _millisToPass / ARPEGGIATOR_DIVISION);
 
         _counterFont = createFont("Arial", 48, true);
         _instrumentSelectFont = createFont("Arial", 12, true);
@@ -195,7 +199,7 @@ public class SequencerMain extends PApplet
         _oldTime = millis();
         if(_drawTimer <= 0)
         {
-            _drawTimer = 100; //redraw every 10 microseconds
+            _drawTimer = 10; //redraw every 10 microseconds
             _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
         }
         else
@@ -237,6 +241,15 @@ public class SequencerMain extends PApplet
         else
         {
             _stepTimer = _stepTimer - _passedTime;
+            if(_arpeggioTimer <= 0)
+            {
+                _arpeggioTimer = _millisToPass / ARPEGGIATOR_DIVISION;
+                _tracksModel.arpeggiator();
+            }
+            else
+            {
+                _arpeggioTimer = _arpeggioTimer - _passedTime;
+            }
         }
     }
 
@@ -309,6 +322,7 @@ public class SequencerMain extends PApplet
                 InstrumentSelectScreen instrumentSelectScreen = (InstrumentSelectScreen) _screens.get(INSTRUMENT_SELECT_SCREEN_ID);
                 instrumentSelectScreen.setSelectingTrack(_intstrumentSelectingTrack);
                 _currentScreen = instrumentSelectScreen;
+                _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
             }
         }
 
@@ -427,15 +441,28 @@ public class SequencerMain extends PApplet
             }
         }
 
+        @Override
+        public void draw(DrawType type)
+        {
+            super.draw(type);
+            int triangleHeight = 30;
+            int triangleWidth = 30;
+            int upperleftX = _area.x + 30;
+            int upperLeftY = _area.y + 10;
+            _mainApp.line(upperleftX, upperLeftY, upperleftX + triangleWidth, upperLeftY + (triangleHeight/2));
+            _mainApp.line(upperleftX + triangleWidth, upperLeftY + (triangleHeight/2), upperleftX, upperLeftY + triangleHeight);
+            _mainApp.line(upperleftX, upperLeftY + triangleHeight, upperleftX, upperLeftY);
+        }
+
         protected void setColor()
         {
             switch (_myPlayStatus.getStatus())
             {
                 case PLAYING:
-                    _mainApp.fill(32, 128, 64);
+                    _mainApp.fill(32, 200, 64);
                     break;
                 case PAUSED:
-                    _mainApp.fill(16, 64, 32);
+                    _mainApp.fill(16, 128, 32);
                     break;
                 case STOPPED:
                     _mainApp.fill(8, 32, 16);
@@ -514,7 +541,7 @@ public class SequencerMain extends PApplet
             
         public void hasStopped()
         {
-            _status = PlayStatusType.PAUSED;
+            _status = PlayStatusType.STOPPED;
         }
 
         public PlayStatusType getStatus()
@@ -593,10 +620,14 @@ public class SequencerMain extends PApplet
         protected int _activeSubTrack;
         protected int _currentStep;
         protected int _curMaxStep;
+        private int[] _arpeggiator;
+        private int _arpIndex;
+//        protected List<List<Integer>> _activeSteps;
         protected int[][] _activeSteps;
         protected MidiDevice _midiInDevice;
 
         private boolean _isMuted;
+        private boolean _arpeggiatorOn;
         private Stack<ShortMessage> _noteStack;
         private NoteSelectMidiReceiver _midiReceiver;
         private Transmitter _instrumentSelectTransmitter;
@@ -607,6 +638,9 @@ public class SequencerMain extends PApplet
             _stepsPerBeat = stepsPerBeat;
             _noteStack = new Stack<>();
             _midiInDevice = midiInDevice;
+            _arpeggiator = new int[]{0, 3, 6};
+            _arpIndex = 0;
+            _arpeggiatorOn = false;
         }
 
         public void rewriteNote()
@@ -772,7 +806,33 @@ public class SequencerMain extends PApplet
             return _activeSteps[_activeSubTrack][stepIdx] != INACTIVE_SYMBOL;
         }
 
+        public void sendArpeggiator()
+        {
+            if(_arpeggiatorOn)
+            {
+                playNote(_activeSteps[_activeSubTrack][_currentStep] + _arpeggiator[_arpIndex]);
+                if(_arpIndex == _arpeggiator.length - 1)
+                {
+                    _arpIndex = 0;
+                }
+                else
+                {
+                    _arpIndex++;
+                }
+            }
+        }
+
         public void sendAdvance(int currentStep)
+        {
+            playNote(_activeSteps[_activeSubTrack][_currentStep]);
+            _currentStep++;
+            if(_currentStep >= _curMaxStep)
+            {
+                _currentStep = 0;
+            }
+        }
+
+        private void playNote(int noteNumber)
         {
             killOldNotes();
             if(isStepActive(_currentStep) && !isMuted())
@@ -780,7 +840,7 @@ public class SequencerMain extends PApplet
                 try
                 {
                     ShortMessage midiMsg = new ShortMessage();
-                    midiMsg.setMessage(ShortMessage.NOTE_ON, _channelNr, _activeSteps[_activeSubTrack][_currentStep], 120);
+                    midiMsg.setMessage(ShortMessage.NOTE_ON, _channelNr, noteNumber, 120);
                     _midiDevice.getReceiver().send(midiMsg, -1);
                     _noteStack.push(midiMsg);
                 }
@@ -792,11 +852,6 @@ public class SequencerMain extends PApplet
                 {
                     exc.printStackTrace();
                 }
-            }
-            _currentStep++;
-            if(_currentStep >= _curMaxStep)
-            {
-                _currentStep = 0;
             }
         }
 
@@ -877,6 +932,16 @@ public class SequencerMain extends PApplet
         {
             _instrumentSelectTransmitter.close();
         }
+
+        public boolean isArpeggiatorOn()
+        {
+            return _arpeggiatorOn;
+        }
+
+        public void setArpeggiator(boolean isOn)
+        {
+            _arpeggiatorOn = isOn;
+        }
     }
     
     public class TracksModel
@@ -892,20 +957,21 @@ public class SequencerMain extends PApplet
             {
                 
                 TrackModel newModel = null;
-                if(trackCnt == numTracks - 1)
-                {
-                    newModel = new NoteLooperModel(steps, stepsPerBeat, beatsPerMinute, _midiInDevice);
-                }
-                else
-                {
-                    newModel = new TrackModel(steps, stepsPerBeat, _midiInDevice);
-                }
+                newModel = new NoteLooperModel(steps, stepsPerBeat, beatsPerMinute, _midiInDevice);
                 _tracksModels.add(newModel);
             }
             mapMidi(_tracksModels);
             for (TrackModel curTrackModel : _tracksModels)
             {
                 curTrackModel.initialize();
+            }
+        }
+
+        public void arpeggiator()
+        {
+            for (TrackModel curMod : _tracksModels)
+            {
+                curMod.sendArpeggiator();
             }
         }
 
@@ -1342,6 +1408,37 @@ public class SequencerMain extends PApplet
         }
     }
 
+    public class ArpeggiatorButton extends SeqButton
+    {
+        private TrackModel _trackModel;
+
+        public ArpeggiatorButton(SequencerMain mainApp, Rectangle rectangle, TrackModel trackModel)
+        {
+            super(mainApp, rectangle, null, null);
+            _trackModel = trackModel;
+        }
+
+        @Override
+        protected void buttonPressed(InputState inputState)
+        {
+            _trackModel.setArpeggiator(!_trackModel.isArpeggiatorOn());
+            System.out.println("arp button pressed");
+        }
+
+        @Override
+        protected void setColor()
+        {
+            if(_trackModel.isArpeggiatorOn())
+            {
+                _mainApp.fill(255, 0, 0);
+            }
+            else
+            {
+                _mainApp.fill(0, 255, 0);
+            }
+        }
+    }
+
     public class RecoredButton extends SeqButton
     {
         private NoteLooperModel _trackModel;
@@ -1403,28 +1500,30 @@ public class SequencerMain extends PApplet
     public class NoteLooperBar extends StepSequencerBar
     {
         private RecoredButton _recordButton;
+        private ArpeggiatorButton _arpeggiatorButton;
 
         public NoteLooperBar(Rectangle barArea, PVector insets, TrackModel trackModel, SequencerMain mainApp)
         {
             super(barArea, insets, trackModel, mainApp);
-            _recordButton = new RecoredButton(mainApp, new Rectangle(barArea.x - 35, barArea.y + 5, 35, (int)(_buttonHeight / 2)), trackModel);
+            int insideButtonHeight = (int)(_buttonHeight / 2.4);
+            _recordButton = new RecoredButton(mainApp, new Rectangle(barArea.x - 35, barArea.y + 5, 35, insideButtonHeight), trackModel);
+            _arpeggiatorButton = new ArpeggiatorButton(mainApp, new Rectangle(barArea.x - 35, barArea.y + 15 + insideButtonHeight, 35, insideButtonHeight), trackModel);
         }
 
         @Override
         public void draw(DrawType type)
         {
             super.draw(type);
-            _muteButton.draw(type);
-            _instrumentSelectButton.draw(type);
             _recordButton.draw(type);
+            _arpeggiatorButton.draw(type);
         }
 
         @Override
         public void mousePressed(MouseEvent event, InputState inputState)
         {
             super.mousePressed(event, inputState);
-            _instrumentSelectButton.mousePressed(event, inputState);
             _recordButton.mousePressed(event, inputState);
+            _arpeggiatorButton.mousePressed(event, inputState);
         }
     }
 
