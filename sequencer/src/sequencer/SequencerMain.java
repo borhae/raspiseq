@@ -609,7 +609,6 @@ public class SequencerMain extends PApplet
     public class TrackModel
     {
         protected static final int INACTIVE_SYMBOL = -1; //no note/instrument
-        protected static final int MAX_EVENTS_AT_SAME_TIME = 10; //maximum amount of parallel midi events memorized by this object
    
         protected int _numberOfSteps;
         protected int _stepsPerBeat;
@@ -622,8 +621,7 @@ public class SequencerMain extends PApplet
         protected int _curMaxStep;
         private int[] _arpeggiator;
         private int _arpIndex;
-//        protected List<List<Integer>> _activeSteps;
-        protected int[][] _activeSteps;
+        protected List<List<Integer>> _activeSteps;
         protected MidiDevice _midiInDevice;
 
         private boolean _isMuted;
@@ -645,13 +643,15 @@ public class SequencerMain extends PApplet
 
         public void rewriteNote()
         {
-            for (int subTrackIdx = 0; subTrackIdx < _activeSteps.length; subTrackIdx++)
+            int numOfSteps = _activeSteps.size();
+            for (int stepIdx = 0; stepIdx < numOfSteps; stepIdx++)
             {
-                for (int stepIdx = 0; stepIdx < _activeSteps[subTrackIdx].length; stepIdx++)
+                int numOfNotesThisStep = _activeSteps.get(stepIdx).size();
+                for (int noteThisStepIdx = 0; noteThisStepIdx < numOfNotesThisStep; noteThisStepIdx++)
                 {
-                    if(_activeSteps[subTrackIdx][stepIdx] != INACTIVE_SYMBOL)
+                    if(_activeSteps.get(stepIdx).get(noteThisStepIdx) != INACTIVE_SYMBOL)
                     {
-                        _activeSteps[subTrackIdx][stepIdx] = _note;
+                        _activeSteps.get(stepIdx).set(noteThisStepIdx, _note);
                     }
                 }
             }
@@ -749,15 +749,12 @@ public class SequencerMain extends PApplet
             _curMaxStep = currentMaxSteps;
         }
 
-        public void createTracks(int maxEventsAtSameTime, int steps)
+        public void createTracks(int steps)
         {
-            _activeSteps = new int[maxEventsAtSameTime][steps];
-            for(int curNC = 0; curNC < maxEventsAtSameTime; curNC++)
+            _activeSteps = new ArrayList<>();
+            for(int stepIdx = 0; stepIdx < steps; stepIdx++)
             {
-                for (int stepIdx = 0; stepIdx < _activeSteps[curNC].length; stepIdx++)
-                {
-                    _activeSteps[curNC][stepIdx] = INACTIVE_SYMBOL; //no note/instrument
-                }
+                _activeSteps.add(new ArrayList<>()); // empty list is no note
             }
         }
 
@@ -766,7 +763,7 @@ public class SequencerMain extends PApplet
             setActiveSubTrack(0);
             setCurrentStep(0);
             setCurrentMaxSteps(_numberOfSteps);
-            createTracks(MAX_EVENTS_AT_SAME_TIME, _numberOfSteps);
+            createTracks(_numberOfSteps);
         }
 
         public boolean isCurrentStep(int stepIdx)
@@ -791,26 +788,26 @@ public class SequencerMain extends PApplet
 
         public void toggleActivationState(int activatedButton)
         {
-            if(_activeSteps[_activeSubTrack][activatedButton] == INACTIVE_SYMBOL)
+            if(_activeSteps.get(activatedButton).isEmpty())
             {
-                _activeSteps[_activeSubTrack][activatedButton] = getNote();
+                _activeSteps.get(activatedButton).add(getNote());
             }
             else
             {
-                _activeSteps[_activeSubTrack][activatedButton] = INACTIVE_SYMBOL;
+                _activeSteps.get(activatedButton).clear();
             }
         }
 
         public boolean isStepActive(int stepIdx)
         {
-            return _activeSteps[_activeSubTrack][stepIdx] != INACTIVE_SYMBOL;
+            return !_activeSteps.get(stepIdx).isEmpty();
         }
 
         public void sendArpeggiator()
         {
             if(_arpeggiatorOn)
             {
-                playNote(_activeSteps[_activeSubTrack][_currentStep] + _arpeggiator[_arpIndex]);
+                playNote(_activeSteps.get(_currentStep).get(0) + _arpeggiator[_arpIndex]);
                 if(_arpIndex == _arpeggiator.length - 1)
                 {
                     _arpIndex = 0;
@@ -824,7 +821,7 @@ public class SequencerMain extends PApplet
 
         public void sendAdvance(int currentStep)
         {
-            playNote(_activeSteps[_activeSubTrack][_currentStep]);
+            playNote(_activeSteps.get(_currentStep).get(0));
             _currentStep++;
             if(_currentStep >= _curMaxStep)
             {
@@ -1559,7 +1556,8 @@ public class SequencerMain extends PApplet
 
         public void recordNote(MidiMessage message)
         {
-            _activeSteps[_activeSubTrack][_currentStep] = ((ShortMessage)message).getData1();
+            int note = ((ShortMessage)message).getData1();
+            _activeSteps.get(_currentStep).set(0, note);
         }
 
         public boolean isRecording()
