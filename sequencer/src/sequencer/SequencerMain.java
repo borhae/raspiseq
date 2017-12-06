@@ -25,7 +25,6 @@ import processing.event.MouseEvent;
 
 public class SequencerMain extends PApplet
 {
-    private static final int ARPEGGIATOR_DIVISION = 4;
     private static final String INSTRUMENT_SELECT_SCREEN_ID = "instrumentSelect";
     private static final String TRACK_SCREEN_ID = "trackScreen";
     private static final int STEPS_PER_BEAT = 4;
@@ -33,7 +32,6 @@ public class SequencerMain extends PApplet
     private static final int NUM_TRACKS = 8;
     
     private long _stepTimer;
-    private long _arpeggioTimer;
     private long _drawTimer;
     private long _passedTime;
     private int _beatsPerMinute;
@@ -64,14 +62,12 @@ public class SequencerMain extends PApplet
     public void setup()
     {
         _stepTimer = 0;
-        _arpeggioTimer = 0;
         _passedTime = 0;
         _beatsPerMinute = 160;
         _oldTime = 0;
         _currentStep = 0;
         _millisToPass = 60000 / (_beatsPerMinute * STEPS_PER_BEAT);
         System.out.println("millis per step: " + _millisToPass);
-        System.out.println("millis per arp: " + _millisToPass / ARPEGGIATOR_DIVISION);
 
         _counterFont = createFont("Arial", 48, true);
         _instrumentSelectFont = createFont("Arial", 12, true);
@@ -241,15 +237,6 @@ public class SequencerMain extends PApplet
         else
         {
             _stepTimer = _stepTimer - _passedTime;
-            if(_arpeggioTimer <= 0)
-            {
-                _arpeggioTimer = _millisToPass / ARPEGGIATOR_DIVISION;
-                _tracksModel.arpeggiator();
-            }
-            else
-            {
-                _arpeggioTimer = _arpeggioTimer - _passedTime;
-            }
         }
     }
 
@@ -619,8 +606,6 @@ public class SequencerMain extends PApplet
         protected int _activeSubTrack;
         protected int _currentStep;
         protected int _curMaxStep;
-        private int[] _arpeggiator;
-        private int _arpIndex;
         protected List<List<Integer>> _activeSteps;
         protected MidiDevice _midiInDevice;
 
@@ -636,8 +621,6 @@ public class SequencerMain extends PApplet
             _stepsPerBeat = stepsPerBeat;
             _noteStack = new Stack<>();
             _midiInDevice = midiInDevice;
-            _arpeggiator = new int[]{0, 3, 6};
-            _arpIndex = 0;
             _arpeggiatorOn = false;
         }
 
@@ -803,22 +786,6 @@ public class SequencerMain extends PApplet
             return !_activeSteps.get(stepIdx).isEmpty();
         }
 
-        public void sendArpeggiator()
-        {
-            if(_arpeggiatorOn)
-            {
-                playNote(_activeSteps.get(_currentStep).get(0) + _arpeggiator[_arpIndex]);
-                if(_arpIndex == _arpeggiator.length - 1)
-                {
-                    _arpIndex = 0;
-                }
-                else
-                {
-                    _arpIndex++;
-                }
-            }
-        }
-
         public void sendAdvance(int currentStep)
         {
             playNote(_activeSteps.get(_currentStep).get(0));
@@ -961,14 +928,6 @@ public class SequencerMain extends PApplet
             for (TrackModel curTrackModel : _tracksModels)
             {
                 curTrackModel.initialize();
-            }
-        }
-
-        public void arpeggiator()
-        {
-            for (TrackModel curMod : _tracksModels)
-            {
-                curMod.sendArpeggiator();
             }
         }
 
