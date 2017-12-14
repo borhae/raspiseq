@@ -1,10 +1,13 @@
 package sequencer;
 
 import java.awt.Rectangle;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.Stack;
 
@@ -22,6 +25,7 @@ import processing.core.PApplet;
 import processing.core.PFont;
 import processing.core.PVector;
 import processing.event.MouseEvent;
+import sequencer.SequencerMain.MidiNoteInfo;
 
 public class SequencerMain extends PApplet
 {
@@ -45,6 +49,8 @@ public class SequencerMain extends PApplet
     private PlayStatus _playStatus;
     private Map<String, Screen> _screens;
     private TracksModel _tracksModel;
+    private Queue<MidiNoteInfo> _noteStack;
+    private static final List<Integer> ARPEGGIATOR_NOTE_SEQUENCE = Arrays.asList(new Integer[]{3, 5, 8});
     
     public static void main(String[] args)
     {
@@ -89,7 +95,8 @@ public class SequencerMain extends PApplet
             return;
         }
         
-        _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT, _beatsPerMinute, midiInDevice); 
+        _noteStack = new ArrayDeque<>(64);
+        _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT, _beatsPerMinute, midiInDevice, _noteStack); 
         _screens = new HashMap<>();
         TracksScreen tracksScreen = new TracksScreen(this, _tracksModel);
         tracksScreen.create();
@@ -205,6 +212,7 @@ public class SequencerMain extends PApplet
         if(_stepTimer <= 0)
         {
             _stepTimer = _millisToPass; //redraw according to beats per minute
+            killOldNotes();
             switch (_playStatus.getStatus())
             {
                 case STOPPED:
@@ -237,6 +245,32 @@ public class SequencerMain extends PApplet
         else
         {
             _stepTimer = _stepTimer - _passedTime;
+        }
+    }
+    
+    protected void killOldNotes()
+    {
+        try
+        {
+            while(!_noteStack.isEmpty())
+            {
+                MidiNoteInfo noteInfoToRemove = _noteStack.remove();
+                ShortMessage oldMsg = noteInfoToRemove.getMidiMsg();
+                int oldChannel = oldMsg.getChannel();
+                int oldNote = oldMsg.getData1();
+
+                ShortMessage noteOffMsg = new ShortMessage();
+                noteOffMsg.setMessage(ShortMessage.NOTE_OFF, oldChannel, oldNote, 0);
+                noteInfoToRemove.getOutDevice().getReceiver().send(noteOffMsg, -1);
+            }
+        }
+        catch (MidiUnavailableException exc1)
+        {
+            exc1.printStackTrace();
+        }
+        catch (InvalidMidiDataException exc)
+        {
+            exc.printStackTrace();
         }
     }
 
@@ -595,11 +629,9 @@ public class SequencerMain extends PApplet
     
     public class TrackModel
     {
-        protected static final int INACTIVE_SYMBOL = -1; //no note/instrument
-   
         protected int _numberOfSteps;
         protected int _stepsPerBeat;
-        protected MidiDevice _midiDevice;
+        protected MidiDevice _midiOutDevice;
         protected int _channelNr;
         private int _note;
         protected Info _midiDeviceInfo;
@@ -611,17 +643,21 @@ public class SequencerMain extends PApplet
 
         private boolean _isMuted;
         private boolean _arpeggiatorOn;
-        private Stack<ShortMessage> _noteStack;
+        private Queue<MidiNoteInfo> _noteStack;
         private NoteSelectMidiReceiver _midiReceiver;
         private Transmitter _instrumentSelectTransmitter;
 
-        public TrackModel(int numSteps, int stepsPerBeat, MidiDevice midiInDevice)
+        private Stack<Integer> _arpeggiator;
+
+
+        public TrackModel(int numSteps, int stepsPerBeat, MidiDevice midiInDevice, Queue<MidiNoteInfo> noteStack)
         {
             _numberOfSteps = numSteps;
             _stepsPerBeat = stepsPerBeat;
-            _noteStack = new Stack<>();
+            _noteStack = noteStack;
             _midiInDevice = midiInDevice;
             _arpeggiatorOn = false;
+            _arpeggiator = new Stack<>();
         }
 
         public void rewriteNote()
@@ -629,13 +665,9 @@ public class SequencerMain extends PApplet
             int numOfSteps = _activeSteps.size();
             for (int stepIdx = 0; stepIdx < numOfSteps; stepIdx++)
             {
-                int numOfNotesThisStep = _activeSteps.get(stepIdx).size();
-                for (int noteThisStepIdx = 0; noteThisStepIdx < numOfNotesThisStep; noteThisStepIdx++)
+                if(isStepActive(stepIdx))
                 {
-                    if(_activeSteps.get(stepIdx).get(noteThisStepIdx) != INACTIVE_SYMBOL)
-                    {
-                        _activeSteps.get(stepIdx).set(noteThisStepIdx, _note);
-                    }
+                    _activeSteps.get(stepIdx).add(_note);
                 }
             }
         }
@@ -650,7 +682,7 @@ public class SequencerMain extends PApplet
                 {
                     ShortMessage offMsg = new ShortMessage();
                     offMsg.setMessage(ShortMessage.NOTE_OFF, _channelNr, noteNr, 0);
-                    _midiDevice.getReceiver().send(offMsg, -1);
+                    _midiOutDevice.getReceiver().send(offMsg, -1);
                 }
             }
             catch (InvalidMidiDataException exc)
@@ -683,7 +715,7 @@ public class SequencerMain extends PApplet
                 {
                     midiDevice.open();
                 }
-                _midiDevice = midiDevice;
+                _midiOutDevice = midiDevice;
                 _midiDeviceInfo = deviceInfo;
             }
             catch (MidiUnavailableException exc)
@@ -788,57 +820,49 @@ public class SequencerMain extends PApplet
 
         public void sendAdvance(int currentStep)
         {
-            playNote(_activeSteps.get(_currentStep).get(0));
+            if (!isMuted())
+            {
+                if (isStepActive(_currentStep))
+                {
+                    Integer currentNote = _activeSteps.get(_currentStep).get(0);
+                    playNote(currentNote);
+                    reloadArpeggiator(currentNote);
+                }
+                else if (_arpeggiatorOn && !_arpeggiator.empty())
+                {
+                    playNote(_arpeggiator.pop().intValue());
+                }
+            }
             _currentStep++;
-            if(_currentStep >= _curMaxStep)
+            if (_currentStep >= _curMaxStep)
             {
                 _currentStep = 0;
             }
         }
 
-        private void playNote(int noteNumber)
+        private void reloadArpeggiator(Integer currentNote)
         {
-            killOldNotes();
-            if(isStepActive(_currentStep) && !isMuted())
+            _arpeggiator.clear();
+            for (Integer curArpNote : ARPEGGIATOR_NOTE_SEQUENCE)
             {
-                try
-                {
-                    ShortMessage midiMsg = new ShortMessage();
-                    midiMsg.setMessage(ShortMessage.NOTE_ON, _channelNr, noteNumber, 120);
-                    _midiDevice.getReceiver().send(midiMsg, -1);
-                    _noteStack.push(midiMsg);
-                }
-                catch (InvalidMidiDataException exc)
-                {
-                    exc.printStackTrace();
-                }
-                catch (MidiUnavailableException exc)
-                {
-                    exc.printStackTrace();
-                }
+                _arpeggiator.push(currentNote + curArpNote);
             }
         }
 
-        protected void killOldNotes()
+        private void playNote(int noteNumber)
         {
             try
             {
-                while(!_noteStack.empty())
-                {
-                    ShortMessage oldMsg = _noteStack.pop();
-                    int oldChannel = oldMsg.getChannel();
-                    int oldNote = oldMsg.getData1();
-
-                    ShortMessage noteOffMsg = new ShortMessage();
-                    noteOffMsg.setMessage(ShortMessage.NOTE_OFF, oldChannel, oldNote, 0);
-                    _midiDevice.getReceiver().send(noteOffMsg, -1);
-                }
-            }
-            catch (MidiUnavailableException exc1)
-            {
-                exc1.printStackTrace();
+                ShortMessage midiMsg = new ShortMessage();
+                midiMsg.setMessage(ShortMessage.NOTE_ON, _channelNr, noteNumber, 120);
+                _midiOutDevice.getReceiver().send(midiMsg, -1);
+                _noteStack.add(new MidiNoteInfo(_midiOutDevice, midiMsg));
             }
             catch (InvalidMidiDataException exc)
+            {
+                exc.printStackTrace();
+            }
+            catch (MidiUnavailableException exc)
             {
                 exc.printStackTrace();
             }
@@ -874,7 +898,7 @@ public class SequencerMain extends PApplet
         {
             try
             {
-                if(!_midiDevice.isOpen())
+                if(!_midiInDevice.isOpen())
                 {
                     _midiInDevice.open();
                 }
@@ -913,7 +937,7 @@ public class SequencerMain extends PApplet
         private List<TrackModel> _tracksModels;
         private MidiDevice _midiInDevice;
 
-        public TracksModel(int numTracks, int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiDevice)
+        public TracksModel(int numTracks, int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiDevice, Queue<MidiNoteInfo> noteStack)
         {
             _midiInDevice = midiDevice;
             _tracksModels = new ArrayList<TrackModel>();
@@ -921,7 +945,7 @@ public class SequencerMain extends PApplet
             {
                 
                 TrackModel newModel = null;
-                newModel = new NoteLooperModel(steps, stepsPerBeat, beatsPerMinute, _midiInDevice);
+                newModel = new NoteLooperModel(steps, stepsPerBeat, beatsPerMinute, _midiInDevice, noteStack);
                 _tracksModels.add(newModel);
             }
             mapMidi(_tracksModels);
@@ -1378,7 +1402,6 @@ public class SequencerMain extends PApplet
         protected void buttonPressed(InputState inputState)
         {
             _trackModel.setArpeggiator(!_trackModel.isArpeggiatorOn());
-            System.out.println("arp button pressed");
         }
 
         @Override
@@ -1487,9 +1510,9 @@ public class SequencerMain extends PApplet
     {
         private PlayStatusType _loopingState;
 
-        public NoteLooperModel(int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiInDevice)
+        public NoteLooperModel(int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiInDevice, Queue<MidiNoteInfo> noteStack)
         {
-            super(steps, stepsPerBeat, midiInDevice);
+            super(steps, stepsPerBeat, midiInDevice, noteStack);
             _loopingState = PlayStatusType.STOPPED;
             try
             {
@@ -1516,7 +1539,7 @@ public class SequencerMain extends PApplet
         public void recordNote(MidiMessage message)
         {
             int note = ((ShortMessage)message).getData1();
-            _activeSteps.get(_currentStep).set(0, note);
+            _activeSteps.get(_currentStep).add(note);
         }
 
         public boolean isRecording()
@@ -1568,6 +1591,29 @@ public class SequencerMain extends PApplet
             }
             super.sendPlaying();
         }
+    }
+
+    public class MidiNoteInfo
+    {
+        private MidiDevice _midOutDevice;
+        private ShortMessage _midiMsg;
+
+        public MidiNoteInfo(MidiDevice midiOutDevice, ShortMessage midiMsg)
+        {
+            _midOutDevice = midiOutDevice;
+            _midiMsg = midiMsg;
+        }
+
+        public MidiDevice getOutDevice()
+        {
+            return _midOutDevice;
+        }
+
+        public ShortMessage getMidiMsg()
+        {
+            return _midiMsg;
+        }
+
     }
 
     public interface Screen
