@@ -25,7 +25,6 @@ import processing.core.PApplet;
 import processing.core.PFont;
 import processing.core.PVector;
 import processing.event.MouseEvent;
-import sequencer.SequencerMain.MidiNoteInfo;
 
 public class SequencerMain extends PApplet
 {
