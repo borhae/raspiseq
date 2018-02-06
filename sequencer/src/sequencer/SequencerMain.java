@@ -59,7 +59,7 @@ public class SequencerMain extends PApplet
     @Override
     public void settings()
     {
-        size(1366, 768);
+        size(1920, 1080);
 //        fullScreen();
     }
 
@@ -84,23 +84,53 @@ public class SequencerMain extends PApplet
 
         
         MidiDevice midiInDevice = null;
+        Info[] midiDeviceInfos = null;
+        List<MidiDevice> inDevices = new ArrayList<>();
+        List<MidiDevice> outDevices = new ArrayList<>();
+        midiDeviceInfos = MidiSystem.getMidiDeviceInfo();
         try
         {
-            midiInDevice = createMidiInDevice();
+            for (Info curDevice : midiDeviceInfos)
+            {
+                MidiDevice midiDevice = MidiSystem.getMidiDevice(curDevice);
+                int maxReceivers = midiDevice.getMaxReceivers();
+                int maxTransmitters = midiDevice.getMaxTransmitters();
+                if(maxReceivers == 0 && maxTransmitters != 0)
+                {
+                    inDevices.add(midiDevice);
+                    System.out.println("Device name: " + curDevice.getName() + ", description: " 
+                            + curDevice.getDescription() + ", version: " + curDevice.getVersion() + ", vendor: " + curDevice.getVendor());
+                    System.out.println("-------Provides: input device");
+                 }
+                else if (maxReceivers != 0  && maxTransmitters == 0)
+                {
+                    outDevices.add(midiDevice);
+                    System.out.println("Device name: " + curDevice.getName() + ", description: " 
+                            + curDevice.getDescription() + ", version: " + curDevice.getVersion() + ", vendor: " + curDevice.getVendor());
+                    System.out.println("-------Provides: output device");
+                }
+                else
+                {
+                    System.out.println("Device name: " + curDevice.getName() + ", description: " 
+                            + curDevice.getDescription() + ", version: " + curDevice.getVersion() + ", vendor: " + curDevice.getVendor());
+                    System.out.println("-------Provides: " + maxReceivers + " receivers and " + maxTransmitters + " transmitters");
+                    System.out.println("");
+                }
+            }
+            midiInDevice = createMidiInDevice(inDevices);
+            _noteStack = new ArrayDeque<>(64);
+            _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT, _beatsPerMinute, midiInDevice, _noteStack, outDevices); 
         }
         catch (MidiUnavailableException exc)
         {
             exc.printStackTrace();
-            return;
         }
         
-        _noteStack = new ArrayDeque<>(64);
-        _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT, _beatsPerMinute, midiInDevice, _noteStack); 
         _screens = new HashMap<>();
         TracksScreen tracksScreen = new TracksScreen(this, _tracksModel);
         tracksScreen.create();
 
-        InstrumentSelectScreen  instrumentSelectScreen = new InstrumentSelectScreen(this, _inputState);
+        InstrumentSelectScreen  instrumentSelectScreen = new InstrumentSelectScreen(this, _inputState, outDevices);
         instrumentSelectScreen.create();
         
         _screens.put(TRACK_SCREEN_ID, tracksScreen);
@@ -115,83 +145,100 @@ public class SequencerMain extends PApplet
         return "Channel: " + sMessage.getChannel() + ", Command: " + sMessage.getCommand() + ", Data1: " + sMessage.getData1() + ", Data2: " + sMessage.getData2() + ", Length: " + sMessage.getLength() + ", Status: " + sMessage.getStatus();
     }
 
-    private MidiDevice createMidiInDevice() throws MidiUnavailableException
+    private MidiDevice createMidiInDevice(List<MidiDevice> inDevices) 
     {
-        Info midiInDevice = null;
-        Info[] deviceInfos = MidiSystem.getMidiDeviceInfo();
-        for (Info curDevice : deviceInfos)
+        MidiDevice midiInDevice = null;
+        for (MidiDevice curDevice : inDevices)
         {
-            if(curDevice.getName().equals("Keystation Mini 32") && curDevice.getDescription().equals("No details available") )
+//            System.out.print("Name: " + curDevice.getName() + "  Description: " + curDevice.getDescription());
+//            if(curDevice.getName().equals("K32 [hw:1,0,0]") && curDevice.getDescription().equals("Keystation Mini 32, USB MIDI, Keystation Mini 32") )
+//            {
+//                System.out.println("found input device");
+//                midiInDevice = curDevice;
+//                return MidiSystem.getMidiDevice(midiInDevice);
+//            }
+            Info deviceInfo = curDevice.getDeviceInfo();
+            if(deviceInfo.getName().equals("Keystation Mini 32") && deviceInfo.getDescription().equals("No details available") )
             {
                 midiInDevice = curDevice;
             }
         }
-        return MidiSystem.getMidiDevice(midiInDevice);
+        return midiInDevice;
     }
 
-    private void mapMidi(List<TrackModel> tracksModels)
+    private void mapMidi(List<TrackModel> tracksModels, List<MidiDevice> outDevices)
     {
-            homeMapping(tracksModels);
+            homeMapping(tracksModels, outDevices);
 //            windowsMapping(tracksModels);
             System.out.println();
     }
  
-    private void windowsMapping(List<TrackModel> tracksModels)
+    private void windowsMapping(List<TrackModel> trackModels, List<MidiDevice> outDevices)
     {
-        MidiDevice.Info[] deviceInfos = MidiSystem.getMidiDeviceInfo();
         int channel = 10;
-        for (Info curDevice : deviceInfos)
+        MidiDevice primaryMidiOutDevice = null;
+        for (MidiDevice curDevice : outDevices)
         {
-            System.out.print("Name: " + curDevice.getName());
-            System.out.print("  Description: " + curDevice.getDescription());
-            if(curDevice.getName().equals("Gervill") && curDevice.getDescription().equals("Software MIDI Synthesizer"))
+            Info info = curDevice.getDeviceInfo();
+            System.out.print("Name: " + info.getName());
+            System.out.print("  Description: " + info.getDescription());
+            if(info.equals("Gervill") && info.getDescription().equals("Software MIDI Synthesizer"))
             {
-                for (TrackModel trackModel : tracksModels)
-                {
-                    trackModel.setDeviceInfo(curDevice);
-                    trackModel.setChannel(channel);
-                }
+                primaryMidiOutDevice = curDevice;
                 System.out.print(" <---- SELECTED");
             }                                                                                                                           
-            System.out.println();
-            tracksModels.get(0).setNote(36);
-            tracksModels.get(1).setNote(38);
-            tracksModels.get(2).setNote(39);
-            tracksModels.get(3).setNote(42);
-            tracksModels.get(4).setNote(43);
-            tracksModels.get(5).setNote(46);
-            tracksModels.get(6).setNote(50);
-            tracksModels.get(7).setNote(75);
         }
+        for (TrackModel trackModel : trackModels)
+        {
+            trackModel.setDevice(primaryMidiOutDevice);
+            trackModel.setChannel(channel);
+        }
+        System.out.println();
+        trackModels.get(0).setNote(36);
+        trackModels.get(1).setNote(38);
+        trackModels.get(2).setNote(39);
+        trackModels.get(3).setNote(42);
+        trackModels.get(4).setNote(43);
+        trackModels.get(5).setNote(46);
+        trackModels.get(6).setNote(50);
+        trackModels.get(7).setNote(75);
     }
 
-    private void homeMapping(List<TrackModel> tracksModels)
+    private void homeMapping(List<TrackModel> trackModels, List<MidiDevice> outDevices)
     {
-        MidiDevice.Info[] deviceInfos = MidiSystem.getMidiDeviceInfo();
+        System.out.println("doing home mapping:");
+        // String outputDeviceName = "U4i4o [hw:2,0,0]"; // Linux driver name
+        String outputDeviceName = "USB Midi 4i4o"; // Windows driver name
+        // Linux: description is null
+        String outputDeviceDescription = "External MIDI Port"; // Windows driver
+                                                               // description
         int channel = 0;
-        for (Info curDevice : deviceInfos)
+        MidiDevice primaryMidiOutDevice = null;
+        for (MidiDevice curDevice : outDevices)
         {
-            System.out.print("Name: " + curDevice.getName());
-            System.out.print("  Description: " + curDevice.getDescription());
-            if(curDevice.getName().equals("USB Midi 4i4o") && curDevice.getDescription().equals("External MIDI Port"))
+            Info info = curDevice.getDeviceInfo();
+            System.out.print("is: " + info.getName());
+            System.out.print(", looking for: " + outputDeviceName);
+            if (info.getName().equals(outputDeviceName) && info.getDescription().equals(outputDeviceDescription))
             {
-                for (TrackModel trackModel : tracksModels)
-                {
-                    trackModel.setDeviceInfo(curDevice);
-                    trackModel.setChannel(channel);
-                }
+                primaryMidiOutDevice = curDevice;
                 System.out.print(" <---- SELECTED");
             }
             System.out.println("");
-            tracksModels.get(0).setNote(36);
-            tracksModels.get(1).setNote(38);
-            tracksModels.get(2).setNote(39);
-            tracksModels.get(3).setNote(42);
-            tracksModels.get(4).setNote(43);
-            tracksModels.get(5).setNote(46);
-            tracksModels.get(6).setNote(50);
-            tracksModels.get(7).setNote(75);
         }
+        for (TrackModel trackModel : trackModels)
+        {
+            trackModel.setDevice(primaryMidiOutDevice);
+            trackModel.setChannel(channel);
+        }
+        trackModels.get(0).setNote(36);
+        trackModels.get(1).setNote(38);
+        trackModels.get(2).setNote(39);
+        trackModels.get(3).setNote(42);
+        trackModels.get(4).setNote(43);
+        trackModels.get(5).setNote(46);
+        trackModels.get(6).setNote(50);
+        trackModels.get(7).setNote(75);
     }
 
     @Override
@@ -199,15 +246,15 @@ public class SequencerMain extends PApplet
     {
         _passedTime = millis() - _oldTime;
         _oldTime = millis();
-        if(_drawTimer <= 0)
-        {
-            _drawTimer = 10; //redraw every 10 microseconds
-            _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
-        }
-        else
-        {
-            _drawTimer = _drawTimer - _passedTime;
-        }
+//        if(_drawTimer <= 0)
+//        {
+//            _drawTimer = 10; //redraw every 10 microseconds
+//            _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
+//        }
+//        else
+//        {
+//            _drawTimer = _drawTimer - _passedTime;
+//        }
         if(_stepTimer <= 0)
         {
             _stepTimer = _millisToPass; //redraw according to beats per minute
@@ -239,7 +286,7 @@ public class SequencerMain extends PApplet
             }
             background(255);
             _currentScreen.draw(DrawType.STEP_ADVANCE);
-            showCurrentStepAsNumber();
+//            showCurrentStepAsNumber();
         }
         else
         {
@@ -704,18 +751,16 @@ public class SequencerMain extends PApplet
             return _stepsPerBeat;
         }
 
-        public void setDeviceInfo(Info deviceInfo)
+        public void setDevice(MidiDevice primaryMidiOutDevice)
         {
-            MidiDevice midiDevice;
             try
             {
-                midiDevice = MidiSystem.getMidiDevice(deviceInfo);
-                if(!midiDevice.isOpen())
+                if(!primaryMidiOutDevice.isOpen())
                 {
-                    midiDevice.open();
+                    primaryMidiOutDevice.open();
                 }
-                _midiOutDevice = midiDevice;
-                _midiDeviceInfo = deviceInfo;
+                _midiOutDevice = primaryMidiOutDevice;
+                _midiDeviceInfo = primaryMidiOutDevice.getDeviceInfo();
             }
             catch (MidiUnavailableException exc)
             {
@@ -936,7 +981,7 @@ public class SequencerMain extends PApplet
         private List<TrackModel> _tracksModels;
         private MidiDevice _midiInDevice;
 
-        public TracksModel(int numTracks, int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiDevice, Queue<MidiNoteInfo> noteStack)
+        public TracksModel(int numTracks, int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiDevice, Queue<MidiNoteInfo> noteStack, List<MidiDevice> outDevices)
         {
             _midiInDevice = midiDevice;
             _tracksModels = new ArrayList<TrackModel>();
@@ -947,7 +992,7 @@ public class SequencerMain extends PApplet
                 newModel = new NoteLooperModel(steps, stepsPerBeat, beatsPerMinute, _midiInDevice, noteStack);
                 _tracksModels.add(newModel);
             }
-            mapMidi(_tracksModels);
+            mapMidi(_tracksModels, outDevices);
             for (TrackModel curTrackModel : _tracksModels)
             {
                 curTrackModel.initialize();
@@ -1093,21 +1138,16 @@ public class SequencerMain extends PApplet
 
     public class InstrumentSelectScreen implements Screen
     {
-        private List<Info> _devices;
+        private List<MidiDevice> _devices;
         private List<ScreenElement> _elements;
         private SequencerMain _mainApp;
         private TrackModel _instrumentSelectingTrack;
         private InputState _inputState;
 
-        public InstrumentSelectScreen(SequencerMain sequencerMain, InputState inputState)
+        public InstrumentSelectScreen(SequencerMain sequencerMain, InputState inputState, List<MidiDevice> outDevices)
         {
             _mainApp = sequencerMain;
-            MidiDevice.Info[] deviceInfos = MidiSystem.getMidiDeviceInfo();
-            _devices = new ArrayList<>();
-            for (Info curDevice : deviceInfos)
-            {
-                _devices.add(curDevice);
-            }
+            _devices = outDevices;
             _elements = new ArrayList<>();
         }
         
@@ -1122,7 +1162,7 @@ public class SequencerMain extends PApplet
         {
             int xDevicePos = 20;
             int yDevicePos = 20;
-            for (Info curDev : _devices)
+            for (MidiDevice curDev : _devices)
             {
                 _elements.add(new DeviceButton(_mainApp, xDevicePos, yDevicePos, curDev, _playStatus, _inputState, _instrumentSelectingTrack));
                 yDevicePos = yDevicePos  + 30;
@@ -1200,25 +1240,27 @@ public class SequencerMain extends PApplet
 
     public class DeviceButton extends InstrumentSelectButton
     {
+        private MidiDevice _device;
         private Info _deviceInfo;
 
-        public DeviceButton(SequencerMain mainApp, int x, int y, Info deviceInfo, PlayStatus playStatus, InputState inputState, TrackModel instrumentSelectingTrack)
+        public DeviceButton(SequencerMain mainApp, int x, int y, MidiDevice device, PlayStatus playStatus, InputState inputState, TrackModel instrumentSelectingTrack)
         {
             super(mainApp, new Rectangle(x, y, 400, 25), playStatus, inputState, instrumentSelectingTrack);
-            _deviceInfo = deviceInfo;
+            _device = device;
+            _deviceInfo = device.getDeviceInfo();
         }
 
         @Override
         protected void buttonPressed(InputState inputState)
         {
-            _trackModel.setDeviceInfo(_deviceInfo);
+            _trackModel.setDevice(_device);
             inputState.instrumentSelected();
         }
 
         @Override
         protected void setColor()
         {
-            if(_trackModel.getDeviceInfo() == _deviceInfo)
+            if(_trackModel.getDeviceInfo() == _device)
             {
                 _mainApp.fill(64, 255, 255);
             }
@@ -1525,6 +1567,7 @@ public class SequencerMain extends PApplet
             }
             catch (MidiUnavailableException exc)
             {
+                System.out.println("For this Midi Device:" + midiInDevice.getDeviceInfo().getName());
                 exc.printStackTrace();
             }
         }
