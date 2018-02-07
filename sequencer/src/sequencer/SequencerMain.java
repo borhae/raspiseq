@@ -27,10 +27,18 @@ import processing.core.PApplet;
 import processing.core.PFont;
 import processing.core.PVector;
 import processing.event.MouseEvent;
-import sequencer.SequencerMain.BeatGeneratingTimerTask;
 
 public class SequencerMain extends PApplet
 {
+    //    private static final String MIDI_IN_DEVICE_NAME = "K32 [hw:1,0,0]"; // Raspberry
+    //    private static final String MIDI_IN_DEVICE_DESCRIPTION = "Keystation Mini 32, USB MIDI, Keystation Mini 32"; // Raspberry
+    private static final String MIDI_IN_DEVICE_NAME = "Keystation Mini 32"; // Windows
+    private static final String MIDI_IN_DEVICE_DESCRIPTION = "No details available"; // Windows
+    //    private static final String MIDI_OUT_DEVICE_DESCRIPTION = "U4i4o [hw:2,0,0]"; // Linux 
+    //    private static final String MIDI_OUT_DEVICE_NAME = null; // Linux
+    private static final String MIDI_OUT_DEVICE_DESCRIPTION = "External MIDI Port"; // Windows 
+    private static final String MIDI_OUT_DEVICE_NAME = "USB Midi 4i4o"; // Windows
+
     private static final String INSTRUMENT_SELECT_SCREEN_ID = "instrumentSelect";
     private static final String TRACK_SCREEN_ID = "trackScreen";
     private static final int STEPS_PER_BEAT = 4;
@@ -121,9 +129,9 @@ public class SequencerMain extends PApplet
                     System.out.println("");
                 }
             }
-            midiInDevice = createMidiInDevice(inDevices);
+            midiInDevice = createMidiInDevice(inDevices, MIDI_IN_DEVICE_NAME, MIDI_IN_DEVICE_DESCRIPTION);
             _noteStack = new ArrayDeque<>(64);
-            _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT, midiInDevice, _noteStack, outDevices); 
+            _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT, midiInDevice, _noteStack, outDevices, MIDI_OUT_DEVICE_NAME, MIDI_OUT_DEVICE_DESCRIPTION); 
         }
         catch (MidiUnavailableException exc)
         {
@@ -145,7 +153,6 @@ public class SequencerMain extends PApplet
         TimerTask beatGenerator = new BeatGeneratingTimerTask();
         Timer timer = new Timer();
         timer.scheduleAtFixedRate(beatGenerator, 0, _millisToPass);
-//        timer.scheduleAtFixedRate(beatGenerator, 0, 1000);
         noLoop();
     }
     
@@ -164,20 +171,13 @@ public class SequencerMain extends PApplet
         return "Channel: " + sMessage.getChannel() + ", Command: " + sMessage.getCommand() + ", Data1: " + sMessage.getData1() + ", Data2: " + sMessage.getData2() + ", Length: " + sMessage.getLength() + ", Status: " + sMessage.getStatus();
     }
 
-    private MidiDevice createMidiInDevice(List<MidiDevice> inDevices) 
+    private MidiDevice createMidiInDevice(List<MidiDevice> inDevices, String deviceName, String deviceDescription) 
     {
         MidiDevice midiInDevice = null;
         for (MidiDevice curDevice : inDevices)
         {
-//            System.out.print("Name: " + curDevice.getName() + "  Description: " + curDevice.getDescription());
-//            if(curDevice.getName().equals("K32 [hw:1,0,0]") && curDevice.getDescription().equals("Keystation Mini 32, USB MIDI, Keystation Mini 32") )
-//            {
-//                System.out.println("found input device");
-//                midiInDevice = curDevice;
-//                return MidiSystem.getMidiDevice(midiInDevice);
-//            }
             Info deviceInfo = curDevice.getDeviceInfo();
-            if(deviceInfo.getName().equals("Keystation Mini 32") && deviceInfo.getDescription().equals("No details available") )
+            if(deviceInfo.getName().equals(deviceName) && deviceInfo.getDescription().equals(deviceDescription) )
             {
                 midiInDevice = curDevice;
             }
@@ -185,11 +185,11 @@ public class SequencerMain extends PApplet
         return midiInDevice;
     }
 
-    private void mapMidi(List<TrackModel> tracksModels, List<MidiDevice> outDevices)
+    private void mapMidi(List<TrackModel> tracksModels, List<MidiDevice> outDevices, String outDeviceName, String outDeviceDescription)
     {
-            homeMapping(tracksModels, outDevices);
+        
+            homeMapping(tracksModels, outDevices, outDeviceName, outDeviceDescription);
 //            windowsMapping(tracksModels);
-            System.out.println();
     }
  
     private void windowsMapping(List<TrackModel> trackModels, List<MidiDevice> outDevices)
@@ -223,14 +223,12 @@ public class SequencerMain extends PApplet
         trackModels.get(7).setNote(75);
     }
 
-    private void homeMapping(List<TrackModel> trackModels, List<MidiDevice> outDevices)
+    private void homeMapping(List<TrackModel> trackModels, List<MidiDevice> outDevices, String defaultOutDeviceName, String defaultOutDeviceDescription)
     {
         System.out.println("doing home mapping:");
-        // String outputDeviceName = "U4i4o [hw:2,0,0]"; // Linux driver name
-        String outputDeviceName = "USB Midi 4i4o"; // Windows driver name
-        // Linux: description is null
-        String outputDeviceDescription = "External MIDI Port"; // Windows driver
-                                                               // description
+        String outputDeviceName = defaultOutDeviceName; // Windows driver name
+        String outputDeviceDescription = defaultOutDeviceDescription; 
+        
         int channel = 0;
         MidiDevice primaryMidiOutDevice = null;
         for (MidiDevice curDevice : outDevices)
@@ -294,58 +292,6 @@ public class SequencerMain extends PApplet
                 break;
         }
     }
-
-    private void oldDraw()
-    {
-        _passedTime = millis() - _oldTime;
-        _oldTime = millis();
-        if(_drawTimer <= 0)
-        {
-            _drawTimer = 10; //redraw every 10 microseconds
-            _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
-        }
-        else
-        {
-            _drawTimer = _drawTimer - _passedTime;
-        }
-        if(_stepTimer <= 0)
-        {
-            _stepTimer = _millisToPass; //redraw according to beats per minute
-            killOldNotes();
-            switch (_playStatus.getStatus())
-            {
-                case STOPPED:
-                    _currentStep = 0;
-                    _tracksModel.sendStopped();
-                    _playStatus.hasStopped();
-                    break;
-                case PLAYING:
-                    _tracksModel.sendPlaying();
-                    _tracksModel.sendAdvance(_currentStep);
-                    _currentStep = _currentStep + 1;
-                    if(_currentStep >= STEPS)
-                    {
-                        _currentStep = 0;
-                    }
-                    break;
-                case PAUSED:
-                    _tracksModel.sendPaused();
-                    break;
-                case RECORDING:
-                    _tracksModel.sendRecording();
-                    break;
-                default:
-                    break;
-            }
-            background(255);
-            _currentScreen.draw(DrawType.STEP_ADVANCE);
-//            showCurrentStepAsNumber();
-        }
-        else
-        {
-            _stepTimer = _stepTimer - _passedTime;
-        }
-    }
     
     protected void killOldNotes()
     {
@@ -371,16 +317,6 @@ public class SequencerMain extends PApplet
         {
             exc.printStackTrace();
         }
-    }
-
-    private void showCurrentStepAsNumber()
-    {
-        textFont(_counterFont);
-        textAlign(LEFT);
-        int previousColor = getGraphics().fillColor;
-        fill(0);
-        text(_currentStep, width/2, height/2);
-        fill(previousColor);
     }
 
     @Override
@@ -658,11 +594,6 @@ public class SequencerMain extends PApplet
         public PlayStatus(PlayStatusType status)
         {
             _status = status;
-        }
-            
-        public void hasStopped()
-        {
-            _status = PlayStatusType.STOPPED;
         }
 
         public PlayStatusType getStatus()
@@ -1036,7 +967,7 @@ public class SequencerMain extends PApplet
         private List<TrackModel> _tracksModels;
         private MidiDevice _midiInDevice;
 
-        public TracksModel(int numTracks, int steps, int stepsPerBeat, MidiDevice midiDevice, Queue<MidiNoteInfo> noteStack, List<MidiDevice> outDevices)
+        public TracksModel(int numTracks, int steps, int stepsPerBeat, MidiDevice midiDevice, Queue<MidiNoteInfo> noteStack, List<MidiDevice> outDevices, String outDeviceName, String outDeviceDescription)
         {
             _midiInDevice = midiDevice;
             _tracksModels = new ArrayList<TrackModel>();
@@ -1047,7 +978,7 @@ public class SequencerMain extends PApplet
                 newModel = new NoteLooperModel(steps, stepsPerBeat, _midiInDevice, noteStack);
                 _tracksModels.add(newModel);
             }
-            mapMidi(_tracksModels, outDevices);
+            mapMidi(_tracksModels, outDevices, outDeviceName, outDeviceDescription);
             for (TrackModel curTrackModel : _tracksModels)
             {
                 curTrackModel.initialize();

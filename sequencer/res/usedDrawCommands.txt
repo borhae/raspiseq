@@ -1,0 +1,4 @@
+text
+rect
+line
+ellipse
