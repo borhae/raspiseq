@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.Stack;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.midi.MidiDevice;
@@ -25,6 +27,7 @@ import processing.core.PApplet;
 import processing.core.PFont;
 import processing.core.PVector;
 import processing.event.MouseEvent;
+import sequencer.SequencerMain.BeatGeneratingTimerTask;
 
 public class SequencerMain extends PApplet
 {
@@ -66,9 +69,10 @@ public class SequencerMain extends PApplet
     @Override
     public void setup()
     {
+        System.out.println("setup time");
         _stepTimer = 0;
         _passedTime = 0;
-        _beatsPerMinute = 160;
+        _beatsPerMinute = 125;
         _oldTime = 0;
         _currentStep = 0;
         _millisToPass = 60000 / (_beatsPerMinute * STEPS_PER_BEAT);
@@ -119,7 +123,7 @@ public class SequencerMain extends PApplet
             }
             midiInDevice = createMidiInDevice(inDevices);
             _noteStack = new ArrayDeque<>(64);
-            _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT, _beatsPerMinute, midiInDevice, _noteStack, outDevices); 
+            _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT, midiInDevice, _noteStack, outDevices); 
         }
         catch (MidiUnavailableException exc)
         {
@@ -138,6 +142,21 @@ public class SequencerMain extends PApplet
         
         _currentScreen = tracksScreen;
         _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
+        TimerTask beatGenerator = new BeatGeneratingTimerTask();
+        Timer timer = new Timer();
+        timer.scheduleAtFixedRate(beatGenerator, 0, _millisToPass);
+//        timer.scheduleAtFixedRate(beatGenerator, 0, 1000);
+        noLoop();
+    }
+    
+    public class BeatGeneratingTimerTask extends TimerTask
+    {
+        @Override
+        public void run()
+        {
+            redraw();
+            generateBeat();
+        }
     }
 
     public static String midiMessageToString(ShortMessage sMessage)
@@ -244,17 +263,51 @@ public class SequencerMain extends PApplet
     @Override
     public void draw()
     {
+        _currentScreen.draw(DrawType.STEP_ADVANCE);
+    }
+    
+    public void generateBeat()
+    {
+        killOldNotes();
+        switch (_playStatus.getStatus())
+        {
+            case STOPPED:
+                _currentStep = 0;
+                _tracksModel.sendStopped();
+                break;
+            case PLAYING:
+                _tracksModel.sendPlaying();
+                _tracksModel.sendAdvance(_currentStep);
+                _currentStep = _currentStep + 1;
+                if(_currentStep >= STEPS)
+                {
+                    _currentStep = 0;
+                }
+                break;
+            case PAUSED:
+                _tracksModel.sendPaused();
+                break;
+            case RECORDING:
+                _tracksModel.sendRecording();
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void oldDraw()
+    {
         _passedTime = millis() - _oldTime;
         _oldTime = millis();
-//        if(_drawTimer <= 0)
-//        {
-//            _drawTimer = 10; //redraw every 10 microseconds
-//            _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
-//        }
-//        else
-//        {
-//            _drawTimer = _drawTimer - _passedTime;
-//        }
+        if(_drawTimer <= 0)
+        {
+            _drawTimer = 10; //redraw every 10 microseconds
+            _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
+        }
+        else
+        {
+            _drawTimer = _drawTimer - _passedTime;
+        }
         if(_stepTimer <= 0)
         {
             _stepTimer = _millisToPass; //redraw according to beats per minute
@@ -334,6 +387,7 @@ public class SequencerMain extends PApplet
     public void mousePressed(MouseEvent event)
     {
         _currentScreen.mousePressed(event, _inputState);
+        redraw();
     }
 
     public InputState getInputState()
@@ -618,6 +672,7 @@ public class SequencerMain extends PApplet
 
         public void set(PlayStatusType status)
         {
+            System.out.println("status set to: " + status);
             _status = status;
         }
     }
@@ -981,7 +1036,7 @@ public class SequencerMain extends PApplet
         private List<TrackModel> _tracksModels;
         private MidiDevice _midiInDevice;
 
-        public TracksModel(int numTracks, int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiDevice, Queue<MidiNoteInfo> noteStack, List<MidiDevice> outDevices)
+        public TracksModel(int numTracks, int steps, int stepsPerBeat, MidiDevice midiDevice, Queue<MidiNoteInfo> noteStack, List<MidiDevice> outDevices)
         {
             _midiInDevice = midiDevice;
             _tracksModels = new ArrayList<TrackModel>();
@@ -989,7 +1044,7 @@ public class SequencerMain extends PApplet
             {
                 
                 TrackModel newModel = null;
-                newModel = new NoteLooperModel(steps, stepsPerBeat, beatsPerMinute, _midiInDevice, noteStack);
+                newModel = new NoteLooperModel(steps, stepsPerBeat, _midiInDevice, noteStack);
                 _tracksModels.add(newModel);
             }
             mapMidi(_tracksModels, outDevices);
@@ -1551,7 +1606,7 @@ public class SequencerMain extends PApplet
     {
         private PlayStatusType _loopingState;
 
-        public NoteLooperModel(int steps, int stepsPerBeat, int beatsPerMinute, MidiDevice midiInDevice, Queue<MidiNoteInfo> noteStack)
+        public NoteLooperModel(int steps, int stepsPerBeat, MidiDevice midiInDevice, Queue<MidiNoteInfo> noteStack)
         {
             super(steps, stepsPerBeat, midiInDevice, noteStack);
             _loopingState = PlayStatusType.STOPPED;
