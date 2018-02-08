@@ -30,12 +30,12 @@ import processing.event.MouseEvent;
 
 public class SequencerMain extends PApplet
 {
-    //    private static final String MIDI_IN_DEVICE_NAME = "K32 [hw:1,0,0]"; // Raspberry
-    //    private static final String MIDI_IN_DEVICE_DESCRIPTION = "Keystation Mini 32, USB MIDI, Keystation Mini 32"; // Raspberry
+//        private static final String MIDI_IN_DEVICE_NAME = "K32 [hw:1,0,0]"; // Raspberry
+//        private static final String MIDI_IN_DEVICE_DESCRIPTION = "Keystation Mini 32, USB MIDI, Keystation Mini 32"; // Raspberry
     private static final String MIDI_IN_DEVICE_NAME = "Keystation Mini 32"; // Windows
     private static final String MIDI_IN_DEVICE_DESCRIPTION = "No details available"; // Windows
-    //    private static final String MIDI_OUT_DEVICE_DESCRIPTION = "U4i4o [hw:2,0,0]"; // Linux 
-    //    private static final String MIDI_OUT_DEVICE_NAME = null; // Linux
+//        private static final String MIDI_OUT_DEVICE_DESCRIPTION = null; // Linux 
+//        private static final String MIDI_OUT_DEVICE_NAME = "U4i4o [hw:2,0,0]"; // Linux
     private static final String MIDI_OUT_DEVICE_DESCRIPTION = "External MIDI Port"; // Windows 
     private static final String MIDI_OUT_DEVICE_NAME = "USB Midi 4i4o"; // Windows
 
@@ -45,21 +45,23 @@ public class SequencerMain extends PApplet
     private static final int STEPS = 32;
     private static final int NUM_TRACKS = 8;
     
-    private long _stepTimer;
-    private long _drawTimer;
-    private long _passedTime;
     private int _beatsPerMinute;
     private int _currentStep;
-    private PFont _counterFont;
     private PFont _instrumentSelectFont;
-    private int _oldTime;
     private int _millisToPass;
+    
     private InputState _inputState;
     private Screen _currentScreen;
+    
     private PlayStatus _playStatus;
+    private PlayStatusType _priorStatus;
+
     private Map<String, Screen> _screens;
     private TracksModel _tracksModel;
     private Queue<MidiNoteInfo> _noteStack;
+    
+    private ShortMessage _noteOffMsg;
+    
     private static final List<Integer> ARPEGGIATOR_NOTE_SEQUENCE = Arrays.asList(new Integer[]{3, 5, 8});
     
     public static void main(String[] args)
@@ -78,18 +80,15 @@ public class SequencerMain extends PApplet
     public void setup()
     {
         System.out.println("setup time");
-        _stepTimer = 0;
-        _passedTime = 0;
         _beatsPerMinute = 125;
-        _oldTime = 0;
         _currentStep = 0;
         _millisToPass = 60000 / (_beatsPerMinute * STEPS_PER_BEAT);
         System.out.println("millis per step: " + _millisToPass);
 
-        _counterFont = createFont("Arial", 48, true);
         _instrumentSelectFont = createFont("Arial", 12, true);
 
         _playStatus = new PlayStatus(PlayStatusType.STOPPED);
+        _priorStatus = PlayStatusType.STOPPED;
 
         _inputState = new InputState();
         _inputState.setState(InputStateType.REGULAR);
@@ -132,6 +131,7 @@ public class SequencerMain extends PApplet
             midiInDevice = createMidiInDevice(inDevices, MIDI_IN_DEVICE_NAME, MIDI_IN_DEVICE_DESCRIPTION);
             _noteStack = new ArrayDeque<>(64);
             _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT, midiInDevice, _noteStack, outDevices, MIDI_OUT_DEVICE_NAME, MIDI_OUT_DEVICE_DESCRIPTION); 
+            _noteOffMsg = new ShortMessage();
         }
         catch (MidiUnavailableException exc)
         {
@@ -149,7 +149,6 @@ public class SequencerMain extends PApplet
         _screens.put(INSTRUMENT_SELECT_SCREEN_ID, instrumentSelectScreen);
         
         _currentScreen = tracksScreen;
-        _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
         TimerTask beatGenerator = new BeatGeneratingTimerTask();
         Timer timer = new Timer();
         timer.scheduleAtFixedRate(beatGenerator, 0, _millisToPass);
@@ -236,10 +235,14 @@ public class SequencerMain extends PApplet
             Info info = curDevice.getDeviceInfo();
             System.out.print("is: " + info.getName());
             System.out.print(", looking for: " + outputDeviceName);
-            if (info.getName().equals(outputDeviceName) && info.getDescription().equals(outputDeviceDescription))
+            if (info.getName().equals(outputDeviceName))
             {
-                primaryMidiOutDevice = curDevice;
-                System.out.print(" <---- SELECTED");
+                System.out.print("Name fits");
+                if(outputDeviceDescription == null || info.getDescription().equals(outputDeviceDescription))
+                {
+                    primaryMidiOutDevice = curDevice;
+                    System.out.print(" <---- SELECTED");
+                }
             }
             System.out.println("");
         }
@@ -261,7 +264,7 @@ public class SequencerMain extends PApplet
     @Override
     public void draw()
     {
-        _currentScreen.draw(DrawType.STEP_ADVANCE);
+        _currentScreen.draw();
     }
     
     public void generateBeat()
@@ -271,10 +274,16 @@ public class SequencerMain extends PApplet
         {
             case STOPPED:
                 _currentStep = 0;
-                _tracksModel.sendStopped();
+                if(_priorStatus != _playStatus.getStatus())
+                {
+                    _tracksModel.sendStopped();
+                }
                 break;
             case PLAYING:
-                _tracksModel.sendPlaying();
+                if(_priorStatus != _playStatus.getStatus())
+                {
+                    _tracksModel.sendPlaying();
+                }
                 _tracksModel.sendAdvance(_currentStep);
                 _currentStep = _currentStep + 1;
                 if(_currentStep >= STEPS)
@@ -283,14 +292,21 @@ public class SequencerMain extends PApplet
                 }
                 break;
             case PAUSED:
-                _tracksModel.sendPaused();
+                if(_priorStatus != _playStatus.getStatus())
+                {
+                    _tracksModel.sendPaused();
+                }
                 break;
             case RECORDING:
-                _tracksModel.sendRecording();
+                if(_priorStatus != _playStatus.getStatus())
+                {
+                    _tracksModel.sendRecording();
+                }
                 break;
             default:
                 break;
         }
+        _priorStatus = _playStatus.getStatus();
     }
     
     protected void killOldNotes()
@@ -304,9 +320,8 @@ public class SequencerMain extends PApplet
                 int oldChannel = oldMsg.getChannel();
                 int oldNote = oldMsg.getData1();
 
-                ShortMessage noteOffMsg = new ShortMessage();
-                noteOffMsg.setMessage(ShortMessage.NOTE_OFF, oldChannel, oldNote, 0);
-                noteInfoToRemove.getOutDevice().getReceiver().send(noteOffMsg, -1);
+                _noteOffMsg.setMessage(ShortMessage.NOTE_OFF, oldChannel, oldNote, 0);
+                noteInfoToRemove.getOutDevice().getReceiver().send(_noteOffMsg, -1);
             }
         }
         catch (MidiUnavailableException exc1)
@@ -318,6 +333,8 @@ public class SequencerMain extends PApplet
             exc.printStackTrace();
         }
     }
+    
+    
 
     @Override
     public void mousePressed(MouseEvent event)
@@ -335,9 +352,11 @@ public class SequencerMain extends PApplet
     {
         private InputStateType _state;
         private TrackModel _intstrumentSelectingTrack;
+        private StepLengthSelectButton _stepLengthSelectButton;
 
         public InputState()
         {
+            _stepLengthSelectButton = null;
         }
         
         public void setState(InputStateType newState)
@@ -345,12 +364,17 @@ public class SequencerMain extends PApplet
             _state = newState;
         }
         
-        public void stepLengthSelectPressed()
+        public void stepLengthSelectPressed(StepLengthSelectButton stepLengthSelectButton)
         {
+            if(_stepLengthSelectButton == null)
+            {
+                _stepLengthSelectButton = stepLengthSelectButton;
+            }
             switch (_state)
             {
                 case STEP_LENGTH_SELECT_ENABLED:
                     _state = InputStateType.REGULAR;
+                    stepLengthSelectButton.setRedrawRequired();
                     break;
                 case REGULAR:
                     _state = InputStateType.STEP_LENGTH_SELECT_ENABLED;
@@ -362,6 +386,7 @@ public class SequencerMain extends PApplet
         public void maxStepsSet()
         {
             _state = InputStateType.REGULAR;
+            _stepLengthSelectButton.setRedrawRequired();
         }
 
         public InputStateType getState()
@@ -379,7 +404,7 @@ public class SequencerMain extends PApplet
                 InstrumentSelectScreen instrumentSelectScreen = (InstrumentSelectScreen) _screens.get(INSTRUMENT_SELECT_SCREEN_ID);
                 instrumentSelectScreen.setSelectingTrack(_intstrumentSelectingTrack);
                 _currentScreen = instrumentSelectScreen;
-                _currentScreen.draw(DrawType.NO_STEP_ADVANCE);
+                _currentScreen.draw();
             }
         }
 
@@ -401,17 +426,13 @@ public class SequencerMain extends PApplet
         REGULAR, STEP_LENGTH_SELECT_ENABLED, INSTRUMENT_SELECT_ACTIVE
     }
     
-    public enum DrawType
-    {
-        NO_STEP_ADVANCE, STEP_ADVANCE
-    }
-
     public abstract class SeqButton implements ScreenElement
     {
         protected PApplet _mainApp;
         protected Rectangle _area;
         protected PlayStatus _myPlayStatus;
         protected InputState _myInputState;
+        protected boolean _isDirty;
 
         public SeqButton(PApplet mainApp, Rectangle area, PlayStatus playStatus, InputState inputState)
         {
@@ -419,35 +440,41 @@ public class SequencerMain extends PApplet
             _area = area;
             _myPlayStatus = playStatus;
             _myInputState = inputState;
+            _isDirty = true;
         }
 
         public void mousePressed(MouseEvent event, InputState inputState)
         {
             if(event.getX() > _area.x && event.getX() < _area.x + _area.width && event.getY() > _area.y && event.getY() < _area.y + _area.height)
             {
+                _isDirty = true;
                 buttonPressed(inputState);
             }
         }
 
         protected abstract void buttonPressed(InputState inputState);
 
-        public void draw(DrawType type)
+        public void draw()
         {
-            int prevCol = _mainApp.getGraphics().fillColor;
-            boolean prevStroke = _mainApp.getGraphics().stroke;
-            int prevStrokeCol = _mainApp.getGraphics().strokeColor;
-            _mainApp.noStroke();
-
-            setColor();
-            _mainApp.rect(_area.x, _area.y, _area.width, _area.height, 10);
-            _mainApp.fill(prevCol);
-            if(prevStroke)
+            if(_isDirty)
             {
-                _mainApp.stroke(prevStrokeCol);
-            }
-            else
-            {
+                int prevCol = _mainApp.getGraphics().fillColor;
+                boolean prevStroke = _mainApp.getGraphics().stroke;
+                int prevStrokeCol = _mainApp.getGraphics().strokeColor;
                 _mainApp.noStroke();
+                
+                setColor();
+                _mainApp.rect(_area.x, _area.y, _area.width, _area.height, 10);
+                _mainApp.fill(prevCol);
+                if(prevStroke)
+                {
+                    _mainApp.stroke(prevStrokeCol);
+                }
+                else
+                {
+                    _mainApp.noStroke();
+                }
+                _isDirty = false;
             }
         }
 
@@ -499,9 +526,9 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw(DrawType type)
+        public void draw()
         {
-            super.draw(type);
+            super.draw();
             int triangleHeight = 30;
             int triangleWidth = 30;
             int upperleftX = _area.x + 30;
@@ -560,10 +587,15 @@ public class SequencerMain extends PApplet
             super(mainApp, area, playStatus, inputState);
         }
 
+        public void setRedrawRequired()
+        {
+            _isDirty = true;
+        }
+
         @Override
         protected void buttonPressed(InputState inputState)
         {
-            inputState.stepLengthSelectPressed();
+            inputState.stepLengthSelectPressed(this);
         }
 
         @Override
@@ -606,6 +638,12 @@ public class SequencerMain extends PApplet
             System.out.println("status set to: " + status);
             _status = status;
         }
+
+        @Override
+        public String toString()
+        {
+            return _status.toString();
+        }
     }
 
     public class SequencerBarArea implements ScreenElement
@@ -639,14 +677,11 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw(DrawType type)
+        public void draw()
         {
-            if(type == DrawType.STEP_ADVANCE)
+            for(int trackCnt = 0; trackCnt < NUM_TRACKS; trackCnt++)
             {
-                for(int trackCnt = 0; trackCnt < NUM_TRACKS; trackCnt++)
-                {
-                    _sequencerBars.get(trackCnt).draw(type);
-                }
+                _sequencerBars.get(trackCnt).draw();
             }
         }
 
@@ -680,6 +715,7 @@ public class SequencerMain extends PApplet
         private Transmitter _instrumentSelectTransmitter;
 
         private Stack<Integer> _arpeggiator;
+        private boolean _wasStopped;
 
 
         public TrackModel(int numSteps, int stepsPerBeat, MidiDevice midiInDevice, Queue<MidiNoteInfo> noteStack)
@@ -690,6 +726,7 @@ public class SequencerMain extends PApplet
             _midiInDevice = midiInDevice;
             _arpeggiatorOn = false;
             _arpeggiator = new Stack<>();
+            _wasStopped = false;
         }
 
         public void rewriteNote()
@@ -706,24 +743,28 @@ public class SequencerMain extends PApplet
 
         public void sendStopped()
         {
-            setCurrentStep(0);
-            try
+            if(!_wasStopped)
             {
-                // all notes off
-                for(int noteNr = 0; noteNr < 128; noteNr++)
+                setCurrentStep(0);
+                try
                 {
-                    ShortMessage offMsg = new ShortMessage();
-                    offMsg.setMessage(ShortMessage.NOTE_OFF, _channelNr, noteNr, 0);
-                    _midiOutDevice.getReceiver().send(offMsg, -1);
+                    // all notes off
+                    for(int noteNr = 0; noteNr < 128; noteNr++)
+                    {
+                        ShortMessage offMsg = new ShortMessage();
+                        offMsg.setMessage(ShortMessage.NOTE_OFF, _channelNr, noteNr, 0);
+                        _midiOutDevice.getReceiver().send(offMsg, -1);
+                    }
                 }
-            }
-            catch (InvalidMidiDataException exc)
-            {
-                exc.printStackTrace();
-            }
-            catch (MidiUnavailableException exc)
-            {
-                exc.printStackTrace();
+                catch (InvalidMidiDataException exc)
+                {
+                    exc.printStackTrace();
+                }
+                catch (MidiUnavailableException exc)
+                {
+                    exc.printStackTrace();
+                }
+                _wasStopped = true;
             }
         }
         
@@ -922,6 +963,7 @@ public class SequencerMain extends PApplet
 
         public void sendPlaying()
         {
+            _wasStopped = false;
         }
 
         public void openMidiInDevice()
@@ -1078,11 +1120,11 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw(DrawType type)
+        public void draw()
         {
             for (ScreenElement curElem : _elements)
             {
-                curElem.draw(type);
+                curElem.draw();
             }
         }
 
@@ -1210,7 +1252,7 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw(DrawType type)
+        public void draw()
         {
             for (ScreenElement curElem : _elements)
             {
@@ -1219,7 +1261,7 @@ public class SequencerMain extends PApplet
                     InstrumentSelectButton curButton = (InstrumentSelectButton)curElem;
                     curButton.setActiveTrack(_instrumentSelectingTrack);
                 }
-                curElem.draw(type);
+                curElem.draw();
             }
         }
     }
@@ -1257,9 +1299,9 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw(DrawType type)
+        public void draw()
         {
-            super.draw(type);
+            super.draw();
             textFont(_instrumentSelectFont);
             textAlign(LEFT);
             int previousColor = getGraphics().fillColor;
@@ -1287,9 +1329,9 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw(DrawType type)
+        public void draw()
         {
-            super.draw(type);
+            super.draw();
             textFont(_instrumentSelectFont);
             textAlign(LEFT);
             int previousColor = getGraphics().fillColor;
@@ -1319,9 +1361,9 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw(DrawType type)
+        public void draw()
         {
-            super.draw(type);
+            super.draw();
             textFont(_instrumentSelectFont);
             textAlign(LEFT);
             int previousColor = getGraphics().fillColor;
@@ -1363,9 +1405,9 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw(DrawType type)
+        public void draw()
         {
-            super.draw(type);
+            super.draw();
             textFont(_instrumentSelectFont);
             textAlign(LEFT);
             int previousColor = getGraphics().fillColor;
@@ -1469,9 +1511,9 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw(DrawType type)
+        public void draw()
         {
-            super.draw(type);
+            super.draw();
             int prevCol = _mainApp.getGraphics().fillColor;
             boolean prevStroke = _mainApp.getGraphics().stroke;
             int prevStrokeCol = _mainApp.getGraphics().strokeColor;
@@ -1517,11 +1559,11 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw(DrawType type)
+        public void draw()
         {
-            super.draw(type);
-            _recordButton.draw(type);
-            _arpeggiatorButton.draw(type);
+            super.draw();
+            _recordButton.draw();
+            _arpeggiatorButton.draw();
         }
 
         @Override
@@ -1650,14 +1692,14 @@ public class SequencerMain extends PApplet
 
         void mousePressed(MouseEvent event, InputState inputState);
 
-        void draw(DrawType type);
+        void draw();
 
         void create();
     }
 
     public interface ScreenElement
     {
-        void draw(DrawType type);
+        void draw();
 
         void mousePressed(MouseEvent event, InputState inputState);
     }

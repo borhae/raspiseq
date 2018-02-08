@@ -5,7 +5,6 @@ import java.awt.Rectangle;
 import processing.core.PApplet;
 import processing.core.PVector;
 import processing.event.MouseEvent;
-import sequencer.SequencerMain.DrawType;
 import sequencer.SequencerMain.InputState;
 import sequencer.SequencerMain.PlayStatus;
 import sequencer.SequencerMain.ScreenElement;
@@ -53,7 +52,7 @@ public class StepSequencerBar implements ScreenElement
     }
 
     @Override
-    public void draw(DrawType type)
+    public void draw()
     {
         int prevCol = _p.getGraphics().fillColor;
         _p.fill(_inactiveColor);
@@ -92,8 +91,8 @@ public class StepSequencerBar implements ScreenElement
             _p.rect(stepIdx * _buttonWidth + _insets.x + _corner.x + _controlsWidth, _insets.y + _corner.y, _buttonWidth, _buttonHeight);
         }
         _p.fill(prevCol);
-        _muteButton.draw(type);
-        _instrumentSelectButton.draw(type);
+        _muteButton.draw();
+        _instrumentSelectButton.draw();
     }
     
     public void mousePressed(MouseEvent event, InputState inputState) 
@@ -118,7 +117,6 @@ public class StepSequencerBar implements ScreenElement
                     default:
                         break;
                 }
-                draw(DrawType.NO_STEP_ADVANCE);
             }
         }
     }
