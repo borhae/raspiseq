@@ -160,8 +160,8 @@ public class SequencerMain extends PApplet
         @Override
         public void run()
         {
-            redraw();
             generateBeat();
+            redraw();
         }
     }
 
@@ -277,6 +277,11 @@ public class SequencerMain extends PApplet
                 if(_priorStatus != _playStatus.getStatus())
                 {
                     _tracksModel.sendStopped();
+                    if(_currentScreen instanceof TracksScreen)
+                    {
+                        ((TracksScreen)_currentScreen).setDirty();
+                    }
+                    killOldNotes();
                 }
                 break;
             case PLAYING:
@@ -285,6 +290,10 @@ public class SequencerMain extends PApplet
                     _tracksModel.sendPlaying();
                 }
                 _tracksModel.sendAdvance(_currentStep);
+                if(_currentScreen instanceof TracksScreen)
+                {
+                    ((TracksScreen)_currentScreen).getSequencerArea().setDirty();
+                }
                 _currentStep = _currentStep + 1;
                 if(_currentStep >= STEPS)
                 {
@@ -353,19 +362,24 @@ public class SequencerMain extends PApplet
         private InputStateType _state;
         private TrackModel _intstrumentSelectingTrack;
         private StepLengthSelectButton _stepLengthSelectButton;
+        private InputStateType _prevState;
 
         public InputState()
         {
             _stepLengthSelectButton = null;
+            _state = InputStateType.REGULAR;
+            _prevState = InputStateType.REGULAR;
         }
         
         public void setState(InputStateType newState)
         {
+            _prevState = _state;
             _state = newState;
         }
         
         public void stepLengthSelectPressed(StepLengthSelectButton stepLengthSelectButton)
         {
+            _prevState = _state;
             if(_stepLengthSelectButton == null)
             {
                 _stepLengthSelectButton = stepLengthSelectButton;
@@ -374,7 +388,8 @@ public class SequencerMain extends PApplet
             {
                 case STEP_LENGTH_SELECT_ENABLED:
                     _state = InputStateType.REGULAR;
-                    stepLengthSelectButton.setRedrawRequired();
+                    stepLengthSelectButton.setDirty();
+                    redraw();
                     break;
                 case REGULAR:
                     _state = InputStateType.STEP_LENGTH_SELECT_ENABLED;
@@ -385,8 +400,10 @@ public class SequencerMain extends PApplet
 
         public void maxStepsSet()
         {
+            _prevState = _state;
             _state = InputStateType.REGULAR;
-            _stepLengthSelectButton.setRedrawRequired();
+            _stepLengthSelectButton.setDirty();
+            redraw();
         }
 
         public InputStateType getState()
@@ -399,12 +416,14 @@ public class SequencerMain extends PApplet
             if(_state == InputStateType.REGULAR)
             {
                 _intstrumentSelectingTrack = trackModel;
+                _prevState = _state;
                 _state = InputStateType.INSTRUMENT_SELECT_ACTIVE;
-                background(255);
                 InstrumentSelectScreen instrumentSelectScreen = (InstrumentSelectScreen) _screens.get(INSTRUMENT_SELECT_SCREEN_ID);
                 instrumentSelectScreen.setSelectingTrack(_intstrumentSelectingTrack);
                 _currentScreen = instrumentSelectScreen;
-                _currentScreen.draw();
+                _currentScreen.setDirty();
+                _currentScreen.clear();
+                redraw();
             }
         }
 
@@ -412,11 +431,15 @@ public class SequencerMain extends PApplet
         {
             if(_state == InputStateType.INSTRUMENT_SELECT_ACTIVE)
             {
+                _prevState = _state;
                 _state = InputStateType.REGULAR;
                 _intstrumentSelectingTrack.closeNoteSelector();
                 _intstrumentSelectingTrack.rewriteNote();
                 background(255);
                 _currentScreen = _screens.get(TRACK_SCREEN_ID);
+                _currentScreen.setDirty();
+                _currentScreen.clear();
+                redraw();
             }
         }
     }
@@ -474,11 +497,23 @@ public class SequencerMain extends PApplet
                 {
                     _mainApp.noStroke();
                 }
+                buttonSpecificDraw();
                 _isDirty = false;
             }
         }
 
+        protected void buttonSpecificDraw()
+        {
+            //Overwrite if anything specific should be drawn here
+        }
+
         protected abstract void setColor();
+
+        @Override
+        public void setDirty()
+        {
+            _isDirty = true;
+        }
     }
     
     public abstract class InstrumentSelectButton extends SeqButton
@@ -526,9 +561,8 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw()
+        protected void buttonSpecificDraw()
         {
-            super.draw();
             int triangleHeight = 30;
             int triangleWidth = 30;
             int upperleftX = _area.x + 30;
@@ -585,11 +619,6 @@ public class SequencerMain extends PApplet
         public StepLengthSelectButton(PApplet mainApp, Rectangle area, PlayStatus playStatus, InputState inputState)
         {
             super(mainApp, area, playStatus, inputState);
-        }
-
-        public void setRedrawRequired()
-        {
-            _isDirty = true;
         }
 
         @Override
@@ -692,6 +721,15 @@ public class SequencerMain extends PApplet
                 _sequencerBars.get(trackCnt).mousePressed(event, inputState);
             }
         }
+
+        @Override
+        public void setDirty()
+        {
+            for (StepSequencerBar curBar : _sequencerBars)
+            {
+                curBar.setDirty();
+            }
+        }
     }
     
     public class TrackModel
@@ -716,6 +754,7 @@ public class SequencerMain extends PApplet
 
         private Stack<Integer> _arpeggiator;
         private boolean _wasStopped;
+        private PlayStatusType _state;
 
 
         public TrackModel(int numSteps, int stepsPerBeat, MidiDevice midiInDevice, Queue<MidiNoteInfo> noteStack)
@@ -727,6 +766,7 @@ public class SequencerMain extends PApplet
             _arpeggiatorOn = false;
             _arpeggiator = new Stack<>();
             _wasStopped = false;
+            _state = PlayStatusType.STOPPED;
         }
 
         public void rewriteNote()
@@ -746,24 +786,27 @@ public class SequencerMain extends PApplet
             if(!_wasStopped)
             {
                 setCurrentStep(0);
-                try
-                {
-                    // all notes off
-                    for(int noteNr = 0; noteNr < 128; noteNr++)
-                    {
-                        ShortMessage offMsg = new ShortMessage();
-                        offMsg.setMessage(ShortMessage.NOTE_OFF, _channelNr, noteNr, 0);
-                        _midiOutDevice.getReceiver().send(offMsg, -1);
-                    }
-                }
-                catch (InvalidMidiDataException exc)
-                {
-                    exc.printStackTrace();
-                }
-                catch (MidiUnavailableException exc)
-                {
-                    exc.printStackTrace();
-                }
+                // TODO check if it is sufficient if i move this to the main loop where all previous notes are killed
+//                try
+//                {
+//                    // all notes off
+//                    System.out.println("start all notes off");
+//                    for(int noteNr = 0; noteNr < 128; noteNr++)
+//                    {
+//                        ShortMessage offMsg = new ShortMessage();
+//                        offMsg.setMessage(ShortMessage.NOTE_OFF, _channelNr, noteNr, 0);
+//                        _midiOutDevice.getReceiver().send(offMsg, -1);
+//                    }
+//                    System.out.println("end all notes off");
+//                }
+//                catch (InvalidMidiDataException exc)
+//                {
+//                    exc.printStackTrace();
+//                }
+//                catch (MidiUnavailableException exc)
+//                {
+//                    exc.printStackTrace();
+//                }
                 _wasStopped = true;
             }
         }
@@ -1002,6 +1045,11 @@ public class SequencerMain extends PApplet
         {
             _arpeggiatorOn = isOn;
         }
+
+        public boolean isPlaying()
+        {
+            return false;
+        }
     }
     
     public class TracksModel
@@ -1084,17 +1132,18 @@ public class SequencerMain extends PApplet
         private SequencerMain _parent;
         private SequencerBarArea _sequencerBarsArea;
         private TracksModel _tracksModel;
+        private boolean _clearBackground;
         
         public TracksScreen(SequencerMain parent, TracksModel tracksModel)
         {
             _elements = new ArrayList<>();
             _parent = parent;
             this._tracksModel = tracksModel;
+            _clearBackground = true;
         }
 
         public SequencerBarArea getSequencerArea()
         {
-            
             return this._sequencerBarsArea;
         }
 
@@ -1122,6 +1171,11 @@ public class SequencerMain extends PApplet
         @Override
         public void draw()
         {
+            if(_clearBackground)
+            {
+                background(255);
+                _clearBackground = false;
+            }
             for (ScreenElement curElem : _elements)
             {
                 curElem.draw();
@@ -1135,6 +1189,21 @@ public class SequencerMain extends PApplet
             {
                 curElem.mousePressed(event, inputState);
             }
+        }
+
+        @Override
+        public void setDirty()
+        {
+            for (ScreenElement curElem : _elements)
+            {
+                curElem.setDirty();
+            }
+        }
+
+        @Override
+        public void clear()
+        {
+            _clearBackground = true;
         }
     }
     
@@ -1171,12 +1240,15 @@ public class SequencerMain extends PApplet
         private SequencerMain _mainApp;
         private TrackModel _instrumentSelectingTrack;
         private InputState _inputState;
+        private boolean _clearBackground;
+        private boolean _isDirty;
 
         public InstrumentSelectScreen(SequencerMain sequencerMain, InputState inputState, List<MidiDevice> outDevices)
         {
             _mainApp = sequencerMain;
             _devices = outDevices;
             _elements = new ArrayList<>();
+            _clearBackground = true;
         }
         
         public void setSelectingTrack(TrackModel intstrumentSelectingTrack)
@@ -1254,15 +1326,40 @@ public class SequencerMain extends PApplet
         @Override
         public void draw()
         {
+            if(_clearBackground)
+            {
+                background(255);
+                _clearBackground = false;
+            }
+            if(_isDirty)
+            {
+                for (ScreenElement curElem : _elements)
+                {
+                    if(curElem instanceof InstrumentSelectButton)
+                    {
+                        InstrumentSelectButton curButton = (InstrumentSelectButton)curElem;
+                        curButton.setActiveTrack(_instrumentSelectingTrack);
+                    }
+                    curElem.draw();
+                }
+                _isDirty = false;
+            }
+        }
+
+        @Override
+        public void setDirty()
+        {
+            _isDirty = true;
             for (ScreenElement curElem : _elements)
             {
-                if(curElem instanceof InstrumentSelectButton)
-                {
-                    InstrumentSelectButton curButton = (InstrumentSelectButton)curElem;
-                    curButton.setActiveTrack(_instrumentSelectingTrack);
-                }
-                curElem.draw();
+                curElem.setDirty();
             }
+        }
+
+        @Override
+        public void clear()
+        {
+            _clearBackground = true;
         }
     }
 
@@ -1487,11 +1584,11 @@ public class SequencerMain extends PApplet
         }
     }
 
-    public class RecoredButton extends SeqButton
+    public class RecordButton extends SeqButton
     {
         private NoteLooperModel _trackModel;
 
-        public RecoredButton(SequencerMain mainApp, Rectangle rectangle, TrackModel trackModel)
+        public RecordButton(SequencerMain mainApp, Rectangle rectangle, TrackModel trackModel)
         {
             super(mainApp, rectangle, null, null);
             _trackModel = (NoteLooperModel)trackModel;
@@ -1511,9 +1608,8 @@ public class SequencerMain extends PApplet
         }
 
         @Override
-        public void draw()
+        protected void buttonSpecificDraw()
         {
-            super.draw();
             int prevCol = _mainApp.getGraphics().fillColor;
             boolean prevStroke = _mainApp.getGraphics().stroke;
             int prevStrokeCol = _mainApp.getGraphics().strokeColor;
@@ -1547,14 +1643,14 @@ public class SequencerMain extends PApplet
 
     public class NoteLooperBar extends StepSequencerBar
     {
-        private RecoredButton _recordButton;
+        private RecordButton _recordButton;
         private ArpeggiatorButton _arpeggiatorButton;
 
         public NoteLooperBar(Rectangle barArea, PVector insets, TrackModel trackModel, SequencerMain mainApp)
         {
             super(barArea, insets, trackModel, mainApp);
             int insideButtonHeight = (int)(_buttonHeight / 2.4);
-            _recordButton = new RecoredButton(mainApp, new Rectangle(barArea.x - 35, barArea.y + 5, 35, insideButtonHeight), trackModel);
+            _recordButton = new RecordButton(mainApp, new Rectangle(barArea.x - 35, barArea.y + 5, 35, insideButtonHeight), trackModel);
             _arpeggiatorButton = new ArpeggiatorButton(mainApp, new Rectangle(barArea.x - 35, barArea.y + 15 + insideButtonHeight, 35, insideButtonHeight), trackModel);
         }
 
@@ -1572,6 +1668,14 @@ public class SequencerMain extends PApplet
             super.mousePressed(event, inputState);
             _recordButton.mousePressed(event, inputState);
             _arpeggiatorButton.mousePressed(event, inputState);
+        }
+
+        @Override
+        public void setDirty()
+        {
+            super.setDirty();
+            _recordButton.setDirty();
+            _arpeggiatorButton.setDirty();
         }
     }
 
@@ -1690,6 +1794,10 @@ public class SequencerMain extends PApplet
     {
         void add(ScreenElement element);
 
+        void setDirty();
+        
+        void clear();
+
         void mousePressed(MouseEvent event, InputState inputState);
 
         void draw();
@@ -1700,6 +1808,8 @@ public class SequencerMain extends PApplet
     public interface ScreenElement
     {
         void draw();
+
+        void setDirty();
 
         void mousePressed(MouseEvent event, InputState inputState);
     }

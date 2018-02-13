@@ -29,6 +29,7 @@ public class StepSequencerBar implements ScreenElement
     
     protected TrackModel _trackModel;
     private int _steps;
+    private boolean _isDirty;
 
     public StepSequencerBar(Rectangle barArea, PVector insets, TrackModel trackModel, SequencerMain mainApp)
     {
@@ -49,48 +50,56 @@ public class StepSequencerBar implements ScreenElement
         _muteButton = new MuteButton(mainApp, mainApp, new Rectangle((int)(_corner.x + insets.x), (int)(_corner.y + insets.y), 40, ctrlButtonHeight), null, null);
         _instrumentSelectButton = new InstrumentSelectButton(mainApp, mainApp, new Rectangle((int)(_corner.x + insets.x), (int)(_corner.y + insets.y) + 40, 40, ctrlButtonHeight), null, null);
         _inputState = mainApp.getInputState();
+        _isDirty = true;
     }
 
     @Override
     public void draw()
     {
-        int prevCol = _p.getGraphics().fillColor;
-        _p.fill(_inactiveColor);
-        for(int stepIdx = 0; stepIdx < _steps; stepIdx++)
+        if(_isDirty)
         {
-            if(!_trackModel.isCurrentStep(stepIdx))
+            int prevCol = _p.getGraphics().fillColor;
+            _p.fill(_inactiveColor);
+            for(int stepIdx = 0; stepIdx < _steps; stepIdx++)
             {
-                if(_trackModel.isStepActive(stepIdx))
+                if(!_trackModel.isCurrentStep(stepIdx))
                 {
-                    _p.fill(0, 0, 255);
-                }
-                else 
-                {
-                    if(_trackModel.isFirstStepInBeat(stepIdx))
+                    if(_trackModel.isStepActive(stepIdx))
                     {
-                        _p.fill(_beatColor);
-                        if(_trackModel.isCurrentMaxStep(stepIdx))
+                        _p.fill(0, 0, 255);
+                    }
+                    else 
+                    {
+                        if(_trackModel.isFirstStepInBeat(stepIdx))
                         {
-                            _p.fill(128, 0, 255);
+                            _p.fill(_beatColor);
+                            if(_trackModel.isCurrentMaxStep(stepIdx))
+                            {
+                                _p.fill(128, 0, 255);
+                            }
+                        }
+                        else
+                        {
+                            _p.fill(_inactiveColor);
+                            if(_trackModel.isCurrentMaxStep(stepIdx))
+                            {
+                                _p.fill(128, 0, 255);
+                            }
                         }
                     }
-                    else
-                    {
-                        _p.fill(_inactiveColor);
-                        if(_trackModel.isCurrentMaxStep(stepIdx))
-                        {
-                            _p.fill(128, 0, 255);
-                        }
-                    }
                 }
+                else
+                {
+                    _p.fill(_activeColor);
+                }
+                _p.rect(stepIdx * _buttonWidth + _insets.x + _corner.x + _controlsWidth, _insets.y + _corner.y, _buttonWidth, _buttonHeight);
             }
-            else
+            _p.fill(prevCol);
+            if(_isDirty)
             {
-                _p.fill(_activeColor);
+                _isDirty = false;
             }
-            _p.rect(stepIdx * _buttonWidth + _insets.x + _corner.x + _controlsWidth, _insets.y + _corner.y, _buttonWidth, _buttonHeight);
         }
-        _p.fill(prevCol);
         _muteButton.draw();
         _instrumentSelectButton.draw();
     }
@@ -110,9 +119,13 @@ public class StepSequencerBar implements ScreenElement
                 {
                     case REGULAR:
                         _trackModel.toggleActivationState(activatedButton);
+                        _isDirty = true;
+                        _p.redraw();
                         break;
                     case STEP_LENGTH_SELECT_ENABLED:
                         setNewMaxSteps(inputState, activatedButton);
+                        _isDirty = true;
+                        _p.redraw();
                         break;
                     default:
                         break;
@@ -197,5 +210,13 @@ public class StepSequencerBar implements ScreenElement
     public static float computHeight(int totalHeight, int numTracks, float y)
     {
         return (totalHeight/numTracks)  - 2 * y;
+    }
+
+    @Override
+    public void setDirty()
+    {
+        _isDirty = true;
+        _muteButton.setDirty();
+        _instrumentSelectButton.setDirty();
     }
 }
