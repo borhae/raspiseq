@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.Stack;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.stream.Collectors;
 
 import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.midi.MidiDevice;
@@ -22,6 +23,8 @@ import javax.sound.midi.MidiUnavailableException;
 import javax.sound.midi.Receiver;
 import javax.sound.midi.ShortMessage;
 import javax.sound.midi.Transmitter;
+import javax.swing.JFrame;
+import javax.swing.JOptionPane;
 
 import processing.core.PApplet;
 import processing.core.PFont;
@@ -30,15 +33,6 @@ import processing.event.MouseEvent;
 
 public class SequencerMain extends PApplet
 {
-//        private static final String MIDI_IN_DEVICE_NAME = "K32 [hw:1,0,0]"; // Raspberry
-//        private static final String MIDI_IN_DEVICE_DESCRIPTION = "Keystation Mini 32, USB MIDI, Keystation Mini 32"; // Raspberry
-    private static final String MIDI_IN_DEVICE_NAME = "Keystation Mini 32"; // Windows
-    private static final String MIDI_IN_DEVICE_DESCRIPTION = "No details available"; // Windows
-//        private static final String MIDI_OUT_DEVICE_DESCRIPTION = null; // Linux 
-//        private static final String MIDI_OUT_DEVICE_NAME = "U4i4o [hw:2,0,0]"; // Linux
-    private static final String MIDI_OUT_DEVICE_DESCRIPTION = "External MIDI Port"; // Windows 
-    private static final String MIDI_OUT_DEVICE_NAME = "USB Midi 4i4o"; // Windows
-
     private static final String INSTRUMENT_SELECT_SCREEN_ID = "instrumentSelect";
     private static final String TRACK_SCREEN_ID = "trackScreen";
     private static final int STEPS_PER_BEAT = 4;
@@ -72,8 +66,8 @@ public class SequencerMain extends PApplet
     @Override
     public void settings()
     {
-        size(1920, 1080);
-//        fullScreen();
+//        size(1920, 1080);
+        fullScreen();
     }
 
     @Override
@@ -95,9 +89,10 @@ public class SequencerMain extends PApplet
 
         
         MidiDevice midiInDevice = null;
+        MidiDevice primaryMidiOutDevice = null;
         Info[] midiDeviceInfos = null;
-        List<MidiDevice> inDevices = new ArrayList<>();
-        List<MidiDevice> outDevices = new ArrayList<>();
+        List<MidiDeviceSelectable> inDevices = new ArrayList<>();
+        List<MidiDeviceSelectable> outDevices = new ArrayList<>();
         midiDeviceInfos = MidiSystem.getMidiDeviceInfo();
         try
         {
@@ -108,14 +103,14 @@ public class SequencerMain extends PApplet
                 int maxTransmitters = midiDevice.getMaxTransmitters();
                 if(maxReceivers == 0 && maxTransmitters != 0)
                 {
-                    inDevices.add(midiDevice);
+                    inDevices.add(new MidiDeviceSelectable(midiDevice));
                     System.out.println("Device name: " + curDevice.getName() + ", description: " 
                             + curDevice.getDescription() + ", version: " + curDevice.getVersion() + ", vendor: " + curDevice.getVendor());
                     System.out.println("-------Provides: input device");
                  }
                 else if (maxReceivers != 0  && maxTransmitters == 0)
                 {
-                    outDevices.add(midiDevice);
+                    outDevices.add(new MidiDeviceSelectable(midiDevice));
                     System.out.println("Device name: " + curDevice.getName() + ", description: " 
                             + curDevice.getDescription() + ", version: " + curDevice.getVersion() + ", vendor: " + curDevice.getVendor());
                     System.out.println("-------Provides: output device");
@@ -128,9 +123,21 @@ public class SequencerMain extends PApplet
                     System.out.println("");
                 }
             }
-            midiInDevice = createMidiInDevice(inDevices, MIDI_IN_DEVICE_NAME, MIDI_IN_DEVICE_DESCRIPTION);
+            if(inDevices.isEmpty() || outDevices.isEmpty())
+            {
+                System.out.println("Need at least one midi in and one midi out to work. Sorry.... finishing");
+                exit();
+                return;
+            }
+            JFrame fakeFrame = new JFrame("This frame should not be visible :)");
+            MidiDeviceSelectable[] inDevicesAsArray = inDevices.toArray(new MidiDeviceSelectable[0]);
+            midiInDevice = ((MidiDeviceSelectable) JOptionPane.showInputDialog(fakeFrame, "Select Midi In Device", "Select Midi In Device", JOptionPane.PLAIN_MESSAGE, null, inDevicesAsArray, inDevicesAsArray[0])).getDevice();
+
+            MidiDeviceSelectable[] outDevicesAsArray = outDevices.toArray(new MidiDeviceSelectable[0]);
+            primaryMidiOutDevice = ((MidiDeviceSelectable) JOptionPane.showInputDialog(fakeFrame, "Select Midi Out Device", "Select Midi Out Device", JOptionPane.PLAIN_MESSAGE, null, outDevicesAsArray, outDevicesAsArray[0])).getDevice();
+
             _noteStack = new ArrayDeque<>(64);
-            _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT, midiInDevice, _noteStack, outDevices, MIDI_OUT_DEVICE_NAME, MIDI_OUT_DEVICE_DESCRIPTION); 
+            _tracksModel = new TracksModel(NUM_TRACKS, STEPS, STEPS_PER_BEAT, midiInDevice, _noteStack, primaryMidiOutDevice); 
             _noteOffMsg = new ShortMessage();
         }
         catch (MidiUnavailableException exc)
@@ -141,8 +148,8 @@ public class SequencerMain extends PApplet
         _screens = new HashMap<>();
         TracksScreen tracksScreen = new TracksScreen(this, _tracksModel);
         tracksScreen.create();
-
-        InstrumentSelectScreen  instrumentSelectScreen = new InstrumentSelectScreen(this, _inputState, outDevices);
+        List<MidiDevice> rawOutDevices = outDevices.stream().map(device -> device.getDevice()).collect(Collectors.toList());
+        InstrumentSelectScreen  instrumentSelectScreen = new InstrumentSelectScreen(this, _inputState, rawOutDevices);
         instrumentSelectScreen.create();
         
         _screens.put(TRACK_SCREEN_ID, tracksScreen);
@@ -153,6 +160,27 @@ public class SequencerMain extends PApplet
         Timer timer = new Timer();
         timer.scheduleAtFixedRate(beatGenerator, 0, _millisToPass);
         noLoop();
+    }
+
+    public class MidiDeviceSelectable
+    {
+        private MidiDevice _midiDevice;
+
+        public MidiDeviceSelectable(MidiDevice midiDevice)
+        {
+            _midiDevice = midiDevice;
+        }
+
+        public MidiDevice getDevice()
+        {
+            return _midiDevice;
+        }
+
+        @Override
+        public String toString()
+        {
+            return _midiDevice.getDeviceInfo().getName() + _midiDevice.getDeviceInfo().getDescription();
+        }
     }
     
     public class BeatGeneratingTimerTask extends TimerTask
@@ -168,97 +196,6 @@ public class SequencerMain extends PApplet
     public static String midiMessageToString(ShortMessage sMessage)
     {
         return "Channel: " + sMessage.getChannel() + ", Command: " + sMessage.getCommand() + ", Data1: " + sMessage.getData1() + ", Data2: " + sMessage.getData2() + ", Length: " + sMessage.getLength() + ", Status: " + sMessage.getStatus();
-    }
-
-    private MidiDevice createMidiInDevice(List<MidiDevice> inDevices, String deviceName, String deviceDescription) 
-    {
-        MidiDevice midiInDevice = null;
-        for (MidiDevice curDevice : inDevices)
-        {
-            Info deviceInfo = curDevice.getDeviceInfo();
-            if(deviceInfo.getName().equals(deviceName) && deviceInfo.getDescription().equals(deviceDescription) )
-            {
-                midiInDevice = curDevice;
-            }
-        }
-        return midiInDevice;
-    }
-
-    private void mapMidi(List<TrackModel> tracksModels, List<MidiDevice> outDevices, String outDeviceName, String outDeviceDescription)
-    {
-        
-            homeMapping(tracksModels, outDevices, outDeviceName, outDeviceDescription);
-//            windowsMapping(tracksModels);
-    }
- 
-    private void windowsMapping(List<TrackModel> trackModels, List<MidiDevice> outDevices)
-    {
-        int channel = 10;
-        MidiDevice primaryMidiOutDevice = null;
-        for (MidiDevice curDevice : outDevices)
-        {
-            Info info = curDevice.getDeviceInfo();
-            System.out.print("Name: " + info.getName());
-            System.out.print("  Description: " + info.getDescription());
-            if(info.equals("Gervill") && info.getDescription().equals("Software MIDI Synthesizer"))
-            {
-                primaryMidiOutDevice = curDevice;
-                System.out.print(" <---- SELECTED");
-            }                                                                                                                           
-        }
-        for (TrackModel trackModel : trackModels)
-        {
-            trackModel.setDevice(primaryMidiOutDevice);
-            trackModel.setChannel(channel);
-        }
-        System.out.println();
-        trackModels.get(0).setNote(36);
-        trackModels.get(1).setNote(38);
-        trackModels.get(2).setNote(39);
-        trackModels.get(3).setNote(42);
-        trackModels.get(4).setNote(43);
-        trackModels.get(5).setNote(46);
-        trackModels.get(6).setNote(50);
-        trackModels.get(7).setNote(75);
-    }
-
-    private void homeMapping(List<TrackModel> trackModels, List<MidiDevice> outDevices, String defaultOutDeviceName, String defaultOutDeviceDescription)
-    {
-        System.out.println("doing home mapping:");
-        String outputDeviceName = defaultOutDeviceName; // Windows driver name
-        String outputDeviceDescription = defaultOutDeviceDescription; 
-        
-        int channel = 0;
-        MidiDevice primaryMidiOutDevice = null;
-        for (MidiDevice curDevice : outDevices)
-        {
-            Info info = curDevice.getDeviceInfo();
-            System.out.print("is: " + info.getName());
-            System.out.print(", looking for: " + outputDeviceName);
-            if (info.getName().equals(outputDeviceName))
-            {
-                System.out.print("Name fits");
-                if(outputDeviceDescription == null || info.getDescription().equals(outputDeviceDescription))
-                {
-                    primaryMidiOutDevice = curDevice;
-                    System.out.print(" <---- SELECTED");
-                }
-            }
-            System.out.println("");
-        }
-        for (TrackModel trackModel : trackModels)
-        {
-            trackModel.setDevice(primaryMidiOutDevice);
-            trackModel.setChannel(channel);
-        }
-        trackModels.get(0).setNote(36);
-        trackModels.get(1).setNote(38);
-        trackModels.get(2).setNote(39);
-        trackModels.get(3).setNote(42);
-        trackModels.get(4).setNote(43);
-        trackModels.get(5).setNote(46);
-        trackModels.get(6).setNote(50);
-        trackModels.get(7).setNote(75);
     }
 
     @Override
@@ -786,27 +723,6 @@ public class SequencerMain extends PApplet
             if(!_wasStopped)
             {
                 setCurrentStep(0);
-                // TODO check if it is sufficient if i move this to the main loop where all previous notes are killed
-//                try
-//                {
-//                    // all notes off
-//                    System.out.println("start all notes off");
-//                    for(int noteNr = 0; noteNr < 128; noteNr++)
-//                    {
-//                        ShortMessage offMsg = new ShortMessage();
-//                        offMsg.setMessage(ShortMessage.NOTE_OFF, _channelNr, noteNr, 0);
-//                        _midiOutDevice.getReceiver().send(offMsg, -1);
-//                    }
-//                    System.out.println("end all notes off");
-//                }
-//                catch (InvalidMidiDataException exc)
-//                {
-//                    exc.printStackTrace();
-//                }
-//                catch (MidiUnavailableException exc)
-//                {
-//                    exc.printStackTrace();
-//                }
                 _wasStopped = true;
             }
         }
@@ -1057,9 +973,9 @@ public class SequencerMain extends PApplet
         private List<TrackModel> _tracksModels;
         private MidiDevice _midiInDevice;
 
-        public TracksModel(int numTracks, int steps, int stepsPerBeat, MidiDevice midiDevice, Queue<MidiNoteInfo> noteStack, List<MidiDevice> outDevices, String outDeviceName, String outDeviceDescription)
+        public TracksModel(int numTracks, int steps, int stepsPerBeat, MidiDevice midiInDevice, Queue<MidiNoteInfo> noteStack, MidiDevice outDevice)
         {
-            _midiInDevice = midiDevice;
+            _midiInDevice = midiInDevice;
             _tracksModels = new ArrayList<TrackModel>();
             for(int trackCnt = 0; trackCnt < numTracks; trackCnt++)
             {
@@ -1068,11 +984,25 @@ public class SequencerMain extends PApplet
                 newModel = new NoteLooperModel(steps, stepsPerBeat, _midiInDevice, noteStack);
                 _tracksModels.add(newModel);
             }
-            mapMidi(_tracksModels, outDevices, outDeviceName, outDeviceDescription);
             for (TrackModel curTrackModel : _tracksModels)
             {
+                curTrackModel.setDevice(outDevice);
+                curTrackModel.setChannel(0);
                 curTrackModel.initialize();
             }
+            setDefaultVolcaBeatsMapping();
+        }
+
+        private void setDefaultVolcaBeatsMapping()
+        {
+            _tracksModels.get(0).setNote(36);
+            _tracksModels.get(1).setNote(38);
+            _tracksModels.get(2).setNote(39);
+            _tracksModels.get(3).setNote(42);
+            _tracksModels.get(4).setNote(43);
+            _tracksModels.get(5).setNote(46);
+            _tracksModels.get(6).setNote(50);
+            _tracksModels.get(7).setNote(75);
         }
 
         public List<TrackModel> getTrackModels()
